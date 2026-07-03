@@ -1,0 +1,26 @@
+# Runtime state — never commit anyone's queue or logs
+data/
+logs/
+
+# Generated per-machine by `setup`
+*.plist
+
+# Secrets (belt-and-suspenders; keys live in the Keychain, not files)
+.env
+*.key
+config.local.toml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor / OS cruft
+.DS_Store
+.cx/
+.idea/
+.vscode/
+
+# Internal build notes (not part of the shipped tool)
+internet-historian-build-plan.md

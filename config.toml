@@ -1,0 +1,18 @@
+# Internet Historian — settings (no secrets; IA S3 keys live in the macOS Keychain)
+
+[spn2]
+if_not_archived_within = "30d"     # server-side dedup window; don't recapture within this
+per_url_daily_attempt_cap = 5      # stay well under IA's hard 10/URL/day limit
+
+[drain]
+interval_seconds = 600             # launchd StartInterval (how often a drain cycle runs)
+batch_headroom = 2                 # leave this many SPN2 slots free for manual browser saves
+submitted_timeout_minutes = 90     # a job stuck 'submitted' longer than this is requeued
+
+[backoff]
+base_seconds = 300                 # first retry delay for throttled/transient failures
+max_seconds = 86400                # backoff caps at 1 day
+
+[death]
+confirmations = 3                  # candidate-dead results needed before marking a URL dead
+spacing_hours = 24                 # minimum gap between strikes that count toward death
