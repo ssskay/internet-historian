@@ -20,7 +20,18 @@ import sqlite3
 import subprocess
 import sys
 import time
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11 has no stdlib tomllib
+    try:
+        import tomli as tomllib  # type: ignore  # pip3 install tomli
+    except ModuleNotFoundError:
+        sys.exit(
+            "Internet Historian needs Python 3.11+ (for tomllib).\n"
+            f"You're running Python {sys.version.split()[0]}. Either upgrade Python, or run:\n"
+            "    pip3 install --break-system-packages tomli"
+        )
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
@@ -165,7 +176,9 @@ def _keychain(service: str, account=None):
             check=True,
         )
         return r.stdout.strip() or None
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # CalledProcessError: key not in Keychain. FileNotFoundError: no
+        # `security` binary (non-macOS) — fall through to env vars.
         return None
 
 
