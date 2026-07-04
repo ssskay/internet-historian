@@ -1,5 +1,7 @@
 # Internet Historian 🏛️
 
+[![tests](https://github.com/ssskay/internet-historian/actions/workflows/test.yml/badge.svg)](https://github.com/ssskay/internet-historian/actions/workflows/test.yml)
+
 **Quietly preserve the web things you love, forever.**
 
 Internet Historian is a tiny, patient tool that saves the web pages you care about into the
