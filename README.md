@@ -169,6 +169,20 @@ Knobs live in [`config.toml`](config.toml) (no secrets there). Sensible defaults
 box: 10-minute drain interval, 2 capture slots left free for your own browsing, 30-day dedup
 window, and a conservative per-URL daily attempt cap. Tweak if you like; the defaults are fine.
 
+**Periodic recapture (opt-in).** By default a page is archived once and then left alone. To keep
+a collection *fresh* — re-snapshotting pages that change over time, like a shop or a news hub —
+give it a refresh window:
+
+```toml
+[collections]
+chiikawa = { refresh_days = 30 }
+```
+
+Any archived page in that collection older than `refresh_days` is quietly re-queued on the next
+drain; its last good snapshot stays on record until a new one lands. Collections you don't list
+never recapture. The Internet Archive's own 30-day dedup still applies, so a very short
+`refresh_days` just re-confirms the existing snapshot rather than spamming captures.
+
 ## License
 
 [MIT](LICENSE) — do what you like. Preserve the web things *you* love.

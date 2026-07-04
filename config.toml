@@ -16,3 +16,11 @@ max_seconds = 86400                # backoff caps at 1 day
 [death]
 confirmations = 3                  # candidate-dead results needed before marking a URL dead
 spacing_hours = 24                 # minimum gap between strikes that count toward death
+
+[collections]
+# Opt-in periodic recapture. An archived page in a listed collection whose last
+# capture is older than refresh_days gets quietly re-queued (its last good
+# snapshot stays on record). Collections NOT listed here never recapture — a
+# page is archived once and left alone, which is the default for everything.
+# IA's own 30-day dedup still guards against needless recaptures.
+chiikawa = { refresh_days = 30 }

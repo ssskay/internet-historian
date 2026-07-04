@@ -35,6 +35,11 @@ slot availability). `drain` exists but you never call it by hand — launchd run
 - Accept URLs straight from the conversation: a single link, a pasted list, or a file.
 - Group related URLs with `--collection` (e.g. `--collection chiikawa`). A collection is
   just a tag — no setup needed; naming one that doesn't exist yet creates it.
+- **Periodic recapture is opt-in per collection.** By default a page is archived once and left
+  alone. If the user wants a collection kept fresh (re-snapshotting pages that change over
+  time), add it to the `[collections]` table in `config.toml` with `refresh_days`, e.g.
+  `chiikawa = { refresh_days = 30 }`. Archived pages older than that are re-queued automatically
+  on the next drain; collections not listed there never recapture.
 - `add` normalizes URLs (drops `#fragments`, `utm_*`/`fbclid`/`gclid` junk, lowercases the
   host) and silently skips anything already tracked. It prints `added N, skipped M, ...`.
 - **"Archive everything linked from this page"**: fetch the page, extract the outbound

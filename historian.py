@@ -252,6 +252,9 @@ DEFAULTS = {
     },
     "backoff": {"base_seconds": 300, "max_seconds": 86400},
     "death": {"confirmations": 3, "spacing_hours": 24},
+    # Per-collection periodic recapture, e.g. {"chiikawa": {"refresh_days": 30}}.
+    # Empty by default: nothing recaptures unless explicitly listed.
+    "collections": {},
 }
 
 
@@ -683,6 +686,37 @@ def _poll_submitted(conn, session, cfg, dead_conf, dead_spacing):
                 log.debug("%s still pending (job %s)", row["url"], jid)
 
 
+def _requeue_stale_for_refresh(conn, cfg):
+    """Re-queue archived rows in refresh-enabled collections past their window.
+
+    The old snapshot's archive_url is kept, so history still shows the last good
+    capture until a fresh one lands. Collections without a refresh_days setting
+    (the default for everything) are never touched. IA-side dedup
+    (if_not_archived_within) still applies on the eventual resubmit.
+    """
+    collections = cfg.get("collections") or {}
+    for name, opts in collections.items():
+        refresh_days = opts.get("refresh_days") if isinstance(opts, dict) else None
+        if not refresh_days:
+            continue
+        cutoff = iso(now() - timedelta(days=float(refresh_days)))
+        rows = conn.execute(
+            "SELECT id, url FROM urls WHERE collection=? AND status='archived' "
+            "AND updated_at < ?",
+            (name, cutoff),
+        ).fetchall()
+        for r in rows:
+            conn.execute(
+                "UPDATE urls SET status='queued', next_attempt_at=NULL, updated_at=? "
+                "WHERE id=?",
+                (now_iso(), r["id"]),
+            )
+            log.info("refresh: re-queued %s (collection=%s, older than %s days)",
+                     r["url"], name, refresh_days)
+        if rows:
+            conn.commit()
+
+
 def _pick_and_submit(conn, session, cfg, slots, dead_conf=None, dead_spacing=None):
     if dead_conf is None:
         dead_conf = cfg["death"]["confirmations"]
@@ -775,6 +809,9 @@ def cmd_drain(args):
 
         # (b) poll submitted
         _poll_submitted(conn, session, cfg, dead_conf, dead_spacing)
+
+        # (b2) refresh: re-queue stale archived rows in refresh collections
+        _requeue_stale_for_refresh(conn, cfg)
 
         # (c) slot budget
         try:

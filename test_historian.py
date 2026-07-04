@@ -194,6 +194,38 @@ class HistorianTestCase(unittest.TestCase):
         self.assertEqual(r["status"], "archived")
         self.assertIsNotNone(r["archive_url"])
 
+    # -- periodic recapture: stale archived rows re-queue, fresh ones don't --
+
+    def test_refresh_requeues_only_stale_rows_in_refresh_collections(self):
+        cfg = make_cfg()
+        cfg["collections"] = {"chiikawa": {"refresh_days": 30}}
+
+        def archived(url, collection, days_ago, archive_url=None):
+            self.insert(url, collection=collection, status="archived")
+            self.conn.execute(
+                "UPDATE urls SET updated_at=?, archive_url=? WHERE url=?",
+                (historian.iso(historian.now() - timedelta(days=days_ago)),
+                 archive_url, url),
+            )
+            self.conn.commit()
+
+        # stale, in a refresh collection -> should re-queue (keeping archive_url)
+        archived("https://stale", "chiikawa", 40, "https://web.archive.org/web/1/https://stale")
+        # young, in a refresh collection -> stays archived
+        archived("https://fresh", "chiikawa", 5)
+        # ancient, but its collection has no refresh_days -> stays archived
+        archived("https://other", "default", 400)
+
+        historian._requeue_stale_for_refresh(self.conn, cfg)
+
+        stale = self.row("https://stale")
+        self.assertEqual(stale["status"], "queued")
+        self.assertEqual(stale["archive_url"],
+                         "https://web.archive.org/web/1/https://stale")  # last snapshot kept
+        self.assertIsNone(stale["next_attempt_at"])                      # due immediately
+        self.assertEqual(self.row("https://fresh")["status"], "archived")
+        self.assertEqual(self.row("https://other")["status"], "archived")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
