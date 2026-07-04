@@ -56,17 +56,47 @@ python3 historian.py setup
 `setup` will walk you through getting your free API keys (it opens the right page), store them
 in your Keychain, verify them, and install the background job that does the archiving. That's it.
 
-Now preserve something:
+`setup` gets you to the finish line. You never have to run anything on a schedule — a `launchd`
+job wakes up every 10 minutes, preserves whatever's queued, and goes back to sleep.
+
+## Use it: just talk to it
+
+The nicest way to run Internet Historian is through its [Claude Code](https://claude.ai/code)
+skill — no commands to remember. Install it once (a one-line symlink):
+
+```bash
+ln -sfn ~/internet-historian ~/.claude/skills/internet-historian
+```
+
+Then, in any Claude Code session, just say what you want preserved:
+
+> **You:** archive Chiikawa stuff
+>
+> **Claude:** *searches the web for the real, official ちいかわ pages, checks they're live,
+> shows you the list, and queues them to a `chiikawa` collection — then the background job
+> preserves them, patiently, on its own.*
+
+> **You:** how's my archive doing?
+>
+> **Claude:** *reads back what's preserved, what's still queued, and anything that's stuck.*
+
+> **You:** why hasn't that shop page saved yet?
+>
+> **Claude:** *tells you plainly: just throttled by a busy Archive (leave it — it'll retry) or a
+> genuinely dead link.*
+
+You name a thing; it finds the **real, primary pages** (official sites, Wikipedia, press) over
+fan wikis unless you ask otherwise, confirms the list with you, and queues them. That's the whole
+point — you become a proper internet historian without lifting a finger.
+
+## Prefer the terminal?
+
+Every skill action is just a CLI call you can run yourself:
 
 ```bash
 python3 historian.py add https://www.anime-chiikawa.jp/ --collection chiikawa
 python3 historian.py status
 ```
-
-You never have to run anything on a schedule — a `launchd` job wakes up every 10 minutes,
-preserves whatever's queued, and goes back to sleep.
-
-## The commands
 
 | Command | What it does |
 |---------|--------------|
@@ -79,28 +109,6 @@ preserves whatever's queued, and goes back to sleep.
 | `check` | Raw Internet Archive capacity right now |
 
 Collections are just tags — group your Chiikawa pages, your webcomics, your blogs. No setup needed.
-
-## The Claude Code skill (optional, but lovely)
-
-If you use [Claude Code](https://claude.ai/code), install the bundled skill and you can drive
-the whole thing in plain language — no commands to remember:
-
-```bash
-ln -sfn ~/internet-historian ~/.claude/skills/internet-historian
-```
-
-Then, in any Claude Code session:
-
-> **You:** archive Chiikawa stuff
->
-> **Claude:** *searches the web for the real official ちいかわ pages, checks they're live,
-> shows you the list, and queues them to a `chiikawa` collection — then the background job
-> preserves them.*
-
-> **You:** how's my archive doing?  ·  why hasn't that shop page saved yet?
-
-It knows to lead with **real, primary pages** (official sites, Wikipedia, press) over fan
-wikis unless you ask otherwise — you become a proper internet historian without lifting a finger.
 
 ## How it works (the 60-second version)
 
@@ -130,6 +138,18 @@ after 3 confirmations spaced a day apart. Being throttled by a busy Archive **ne
 - **Social media is best-effort.** X/Twitter and Instagram hide content behind login walls, so
   the Archive often captures a login page instead. Internet Historian will still try, but flags
   these — it's expected, not a bug.
+
+## Related projects
+
+Internet Historian's niche is being a **persistent, patient background queue** with a
+**conversational control surface**: you add things once (or just ask the skill), and it keeps
+working for weeks without you. Other excellent tools in this space, and how they differ:
+
+- **[agude/wayback-machine-archiver](https://github.com/agude/wayback-machine-archiver)** — submits the URLs in a sitemap to the Wayback Machine. A one-shot batch script; no persistent queue, backoff, or state that survives between runs.
+- **[overcast07/wayback-machine-spn-scripts](https://github.com/overcast07/wayback-machine-spn-scripts)** — capable Bash scripts around Save Page Now (outlinks, retries, cross-platform). You run and babysit a session; Internet Historian runs itself indefinitely via `launchd`.
+- **[Mearman/mcp-wayback-machine](https://github.com/Mearman/mcp-wayback-machine)** — an MCP server exposing archive/retrieve/search as on-demand tool calls. Ideal for one-off actions inside an agent; it has no durable queue that keeps retrying throttled captures for you.
+- **[internetarchive/internet-archive-skills](https://github.com/internetarchive/internet-archive-skills)** — the Internet Archive's official Claude Code skill for uploading, downloading, and searching archive.org *items*. Complementary: it manages Archive items, not patient web-page (SPN2) capture with backoff.
+- **[bellingcat/auto-archiver](https://github.com/bellingcat/auto-archiver)** — heavy-duty archiving of links (including media) from a spreadsheet to many backends, built for OSINT/evidence workflows. Far more powerful, and far more to set up; Internet Historian is deliberately tiny, IA-only, and personal.
 
 ## Windows / Linux
 
