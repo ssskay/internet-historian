@@ -16,6 +16,7 @@ import logging
 import logging.handlers
 import os
 import random
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -42,12 +43,50 @@ import requests
 # Paths & constants
 # ---------------------------------------------------------------------------
 
+APP_NAME = "internet-historian"
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
-LOGS_DIR = ROOT / "logs"
+
+
+def _platform_state_dir() -> Path:
+    """Per-user state directory, used when there's no repo-local checkout.
+
+    macOS:   ~/Library/Application Support/internet-historian
+    Windows: %LOCALAPPDATA%\\internet-historian
+    Linux/other POSIX: $XDG_DATA_HOME/internet-historian (default
+                       ~/.local/share/internet-historian)
+    """
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / APP_NAME
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(base) / APP_NAME
+    base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(base) / APP_NAME
+
+
+def _resolve_state():
+    """Decide where config + runtime state live.
+
+    Precedence: a repo-local file/dir wins if it already exists (back-compat
+    with an in-place git checkout — an existing install keeps using its
+    queue.db, logs, and config.toml). Otherwise fall back to the per-user
+    platform directory. Nothing is moved or migrated; `status` reports the
+    resolved locations so it's always clear where state actually is.
+    """
+    state = _platform_state_dir()
+    repo_config = ROOT / "config.toml"
+    repo_data = ROOT / "data"
+    repo_logs = ROOT / "logs"
+    config_path = repo_config if repo_config.exists() else state / "config.toml"
+    data_dir = repo_data if repo_data.is_dir() else state / "data"
+    logs_dir = repo_logs if repo_logs.is_dir() else state / "logs"
+    return config_path, data_dir, logs_dir
+
+
+STATE_DIR = _platform_state_dir()
+CONFIG_PATH, DATA_DIR, LOGS_DIR = _resolve_state()
 DB_PATH = DATA_DIR / "queue.db"
 LOG_PATH = LOGS_DIR / "historian.log"
-CONFIG_PATH = ROOT / "config.toml"
 
 # The current OS user owns the Keychain items and the launchd job. Nothing is
 # hardcoded to any one person, so this repo works for whoever installs it.
@@ -56,7 +95,6 @@ KEYCHAIN_ACCOUNT = os.environ.get("IA_KEYCHAIN_ACCOUNT", USER)
 
 LABEL = "com.internet-historian.drain"
 PLIST_NAME = f"{LABEL}.plist"
-PLIST_PATH = ROOT / PLIST_NAME
 # Older single-user installs used a personalized label / Keychain account;
 # setup cleans these up and migrates keys to the current user's account.
 LEGACY_LABELS = ["com.sara.internet-historian"]
@@ -847,7 +885,8 @@ PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
   <key>ProgramArguments</key>
   <array>
     <string>{python}</string>
-    <string>{script}</string>
+    <string>-m</string>
+    <string>historian</string>
     <string>drain</string>
   </array>
   <key>StartInterval</key>
@@ -950,24 +989,29 @@ def cmd_setup(args):
 
     cfg = load_config()
     interval = cfg["drain"]["interval_seconds"]
-    # Use the interpreter actually running this (it has `requests`), NOT /usr/bin/python3.
+    # Reference the interpreter actually running this (it has `requests`) and
+    # invoke the module by name (`-m historian`) rather than a checkout path, so
+    # an installed package and an in-place checkout both work. WorkingDirectory
+    # is the directory holding historian.py, which lets `-m historian` resolve
+    # even from a bare git clone that isn't pip-installed.
     python = sys.executable
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
     plist = PLIST_TEMPLATE.format(
         label=LABEL,
         python=python,
-        script=str(ROOT / "historian.py"),
         interval=interval,
         stdout=str(LOGS_DIR / "launchd.out.log"),
         stderr=str(LOGS_DIR / "launchd.err.log"),
         workdir=str(ROOT),
     )
-    PLIST_PATH.write_text(plist)
     dest_dir = Path.home() / "Library" / "LaunchAgents"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / PLIST_NAME
     dest.write_text(plist)
+    log.info("wrote launchd plist -> %s (interpreter=%s -m historian, interval=%ss)",
+             dest, python, interval)
     print(f"wrote plist -> {dest}")
-    print(f"  interpreter: {python}")
+    print(f"  runs: {python} -m historian drain")
     print(f"  StartInterval: {interval}s")
 
     uid = os.getuid()
@@ -996,14 +1040,12 @@ def cmd_setup(args):
         print(f"  preserve queued URLs every {interval // 60} minutes. Nothing else to do.")
         print()
         print("Try it:")
-        print(f"    python3 {ROOT / 'historian.py'} add https://example.com")
-        print(f"    python3 {ROOT / 'historian.py'} status")
-        skills_dir = Path.home() / ".claude" / "skills"
-        if skills_dir.exists():
-            print()
-            print("Using Claude Code? Install the conversational skill so you can just say")
-            print('"archive <a url>" in any session:')
-            print(f"    ln -sfn {ROOT} {skills_dir / 'internet-historian'}")
+        print("    internet-historian add https://example.com")
+        print("    internet-historian status")
+        print()
+        print("Using Claude Code? Install the conversational skill so you can just say")
+        print('"archive <a url>" in any session:')
+        print("    internet-historian install-skill")
         return 0
     print("WARNING: job not visible in launchctl list", file=sys.stderr)
     return 1
@@ -1014,9 +1056,25 @@ def cmd_setup(args):
 # ---------------------------------------------------------------------------
 
 
+def _location_kind(p: Path) -> str:
+    """Label a resolved path as living in the checkout or the per-user dir."""
+    try:
+        p.resolve().relative_to(ROOT)
+        return "repo-local"
+    except ValueError:
+        return "per-user"
+
+
 def cmd_status(args):
     conn = db_connect()
     print("Internet Historian — preserving the web things you love.\n")
+
+    print("State lives in:")
+    print(f"  queue.db: {DB_PATH}  ({_location_kind(DB_PATH)})")
+    print(f"  logs:     {LOGS_DIR}  ({_location_kind(LOGS_DIR)})")
+    cfg_note = "loaded" if CONFIG_PATH.exists() else "not present — using built-in defaults"
+    print(f"  config:   {CONFIG_PATH}  ({cfg_note})")
+    print()
 
     by_status = conn.execute(
         "SELECT status, COUNT(*) c FROM urls GROUP BY status ORDER BY status"
@@ -1187,6 +1245,40 @@ def cmd_resume(args):
 
 
 # ---------------------------------------------------------------------------
+# Subcommand: install-skill
+# ---------------------------------------------------------------------------
+
+
+def cmd_install_skill(args):
+    """Install the Claude Code skill into ~/.claude/skills/internet-historian.
+
+    Symlinks the packaged SKILL.md when the OS allows it (so edits to a checkout
+    stay live); falls back to copying (e.g. on Windows without symlink rights).
+    SKILL.md ships beside historian.py in both a checkout and an installed
+    wheel, so ROOT/SKILL.md resolves either way.
+    """
+    src = ROOT / "SKILL.md"
+    if not src.exists():
+        print(f"SKILL.md not found next to historian.py ({src}).", file=sys.stderr)
+        return 1
+    dest_dir = Path.home() / ".claude" / "skills" / "internet-historian"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "SKILL.md"
+    if dest.exists() or dest.is_symlink():
+        dest.unlink()
+    try:
+        dest.symlink_to(src)
+        how = "symlinked"
+    except OSError:
+        shutil.copy2(src, dest)
+        how = "copied"
+    log.info("install-skill: %s %s -> %s", how, src, dest)
+    print(f"✓ Skill installed ({how}): {dest}")
+    print('  In any Claude Code session you can now say e.g. "archive example.com".')
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1211,6 +1303,7 @@ def build_parser():
     d.add_argument("--dead-spacing-hours", type=float, default=None)
 
     sub.add_parser("setup", help="install the background launchd job")
+    sub.add_parser("install-skill", help="install the Claude Code skill into ~/.claude/skills")
     sub.add_parser("status", help="human-readable queue overview")
     sub.add_parser("diagnose", help="explain why problem URLs aren't archived yet")
 
@@ -1230,6 +1323,7 @@ COMMANDS = {
     "add": cmd_add,
     "drain": cmd_drain,
     "setup": cmd_setup,
+    "install-skill": cmd_install_skill,
     "status": cmd_status,
     "diagnose": cmd_diagnose,
     "pause": cmd_pause,

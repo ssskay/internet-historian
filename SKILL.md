@@ -11,24 +11,27 @@ never gives up on a live page. It runs on its own in the background (a launchd j
 minutes) and optimizes for **never losing a URL**, not for speed. Throttling from the
 Archive is normal weather, not failure — the tool simply waits and tries again.
 
-All logic lives in `~/internet-historian/historian.py`. This skill is a **thin** control
-surface: it knows which command to run and how to read the output. Do not reimplement queue,
-backoff, or SPN2 logic here — call the CLI.
+All logic lives in the `internet-historian` command (installed on the user's PATH via
+`pipx install internet-historian`; a shorter `historian` alias is installed too). This skill
+is a **thin** control surface: it knows which command to run and how to read the output. Do
+not reimplement queue, backoff, or SPN2 logic here — call the CLI.
 
 ## The four verbs
 
-Run these from `~/internet-historian/` with `python3`.
+Run the `internet-historian` command from anywhere (it's on the PATH). If it isn't found, the
+tool isn't installed — tell the user to run `pipx install internet-historian`.
 
 | Intent | Command |
 |--------|---------|
-| Preserve one or more URLs | `python3 historian.py add URL [URL ...] [--collection NAME]` |
-| Preserve a whole list from a file | `python3 historian.py add --file /path/to/urls.txt [--collection NAME]` |
-| "How's the archive doing?" | `python3 historian.py status` |
-| "Why hasn't X been saved?" | `python3 historian.py diagnose` |
-| Install / repair the background job | `python3 historian.py setup` |
+| Preserve one or more URLs | `internet-historian add URL [URL ...] [--collection NAME]` |
+| Preserve a whole list from a file | `internet-historian add --file /path/to/urls.txt [--collection NAME]` |
+| "How's the archive doing?" | `internet-historian status` |
+| "Why hasn't X been saved?" | `internet-historian diagnose` |
+| Install / repair the background job | `internet-historian setup` |
 
-Also available: `pause` / `resume` (a URL or a whole `--collection`), and `check` (raw IA
-slot availability). `drain` exists but you never call it by hand — launchd runs it.
+Also available: `pause` / `resume` (a URL or a whole `--collection`), `check` (raw IA slot
+availability), and `install-skill` (re-install this skill). `drain` exists but you never call
+it by hand — launchd runs it.
 
 ### add
 
@@ -70,6 +73,7 @@ the finding. Don't ask for URLs — go get them:
    and confirm before queuing. They may add or cut a few.
 5. **Queue** the confirmed set to a subject-named collection: `add <urls...> --collection
    <subject>`. Then tell them it's preserving in the background and they can check `status` anytime.
+   (In shell terms: `internet-historian add <urls...> --collection <subject>`.)
 
 You do NOT need to run `drain` or babysit captures — the background launchd job archives
 everything on its own, patiently, over the following minutes/hours.
@@ -140,8 +144,7 @@ here so you can answer questions without guessing.
 > "Archive these three to the chiikawa collection: <url1> <url2> <url3>"
 
 ```
-cd ~/internet-historian
-python3 historian.py add <url1> <url2> <url3> --collection chiikawa
+internet-historian add <url1> <url2> <url3> --collection chiikawa
 ```
 
 Then reassure the user they're queued and the background job will preserve them patiently;

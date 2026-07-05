@@ -1,6 +1,10 @@
 # Internet Historian 🏛️
 
 [![tests](https://github.com/ssskay/internet-historian/actions/workflows/test.yml/badge.svg)](https://github.com/ssskay/internet-historian/actions/workflows/test.yml)
+<!-- TODO: once published to PyPI, add PyPI version + supported-Python-versions badges here:
+     [![PyPI](https://img.shields.io/pypi/v/internet-historian.svg)](https://pypi.org/project/internet-historian/)
+     [![Python versions](https://img.shields.io/pypi/pyversions/internet-historian.svg)](https://pypi.org/project/internet-historian/) -->
+
 
 **Quietly preserve the web things you love, forever.**
 
@@ -41,17 +45,15 @@ hand. Internet Historian does it for you, forever, in the background.
 
 ## Quickstart
 
+Install with [pipx](https://pipx.pypa.io/) — it keeps the tool isolated and puts the
+`internet-historian` command on your PATH:
+
 ```bash
-# 1. Get the code
-git clone https://github.com/ssskay/internet-historian.git ~/internet-historian
-cd ~/internet-historian
-
-# 2. Install the one dependency
-pip3 install --break-system-packages requests   # or: pip3 install requests
-
-# 3. Set it up — this connects your Internet Archive account and starts the background job
-python3 historian.py setup
+pipx install internet-historian
+internet-historian setup
 ```
+
+(Plain `pip install internet-historian` works too, e.g. inside a virtualenv.)
 
 `setup` will walk you through getting your free API keys (it opens the right page), store them
 in your Keychain, verify them, and install the background job that does the archiving. That's it.
@@ -62,10 +64,10 @@ job wakes up every 10 minutes, preserves whatever's queued, and goes back to sle
 ## Use it: just talk to it
 
 The nicest way to run Internet Historian is through its [Claude Code](https://claude.ai/code)
-skill — no commands to remember. Install it once (a one-line symlink):
+skill — no commands to remember. Install it once:
 
 ```bash
-ln -sfn ~/internet-historian ~/.claude/skills/internet-historian
+internet-historian install-skill
 ```
 
 Then, in any Claude Code session, just say what you want preserved:
@@ -94,9 +96,11 @@ point — you become a proper internet historian without lifting a finger.
 Every skill action is just a CLI call you can run yourself:
 
 ```bash
-python3 historian.py add https://www.anime-chiikawa.jp/ --collection chiikawa
-python3 historian.py status
+internet-historian add https://www.anime-chiikawa.jp/ --collection chiikawa
+internet-historian status
 ```
+
+(A shorter `historian` alias is installed too.)
 
 | Command | What it does |
 |---------|--------------|
@@ -121,7 +125,7 @@ Collections are just tags — group your Chiikawa pages, your webcomics, your bl
 
 - **`historian.py`** is the whole engine: a queue + an Internet Archive client, in one file.
 - **`queue.db`** remembers every URL and its state (queued → submitted → archived / dead).
-- **`launchd`** is the heartbeat: it runs `historian.py drain` on a timer so you don't have to.
+- **`launchd`** is the heartbeat: it runs `internet-historian drain` on a timer so you don't have to.
 - Captures use server-side dedup (`if_not_archived_within=30d`), so already-saved pages aren't
   needlessly recaptured — they're just recorded as preserved.
 
@@ -159,7 +163,8 @@ Archive client) is pure Python and already cross-platform. Only **two** pieces a
 1. **Key storage** uses the macOS Keychain (via the `security` command). *There's already an
    env-var fallback* — set `IA_ACCESS_KEY` / `IA_SECRET_KEY` and the engine works anywhere.
 2. **The background heartbeat** uses `launchd`. On Linux you'd use a systemd timer or cron; on
-   Windows, Task Scheduler — each just needs to run `python3 historian.py drain` on a timer.
+   Windows, Task Scheduler — each just needs to run `internet-historian drain`
+   (equivalently `python -m historian drain`) on a timer.
 
 Porting means swapping those two. **Contributions very welcome** — that's the whole to-do list.
 

@@ -16,6 +16,11 @@ __pycache__/
 .venv/
 venv/
 
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
 # Editor / OS cruft
 .DS_Store
 .cx/
