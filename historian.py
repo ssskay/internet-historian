@@ -257,7 +257,7 @@ def get_credentials():
     if not ak or not sk:
         sys.stderr.write(
             "ERROR: Internet Archive S3 keys not found.\n"
-            "  Run `python3 historian.py setup` to walk through adding them,\n"
+            "  Run `internet-historian setup` to walk through adding them,\n"
             "  or store them in the macOS Keychain yourself (get them at\n"
             "  https://archive.org/account/s3.php while logged in):\n"
             f"    security add-generic-password -a {KEYCHAIN_ACCOUNT} -s ia-s3-access -w <ACCESS_KEY>\n"
