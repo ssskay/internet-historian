@@ -1,0 +1,17 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 12345,
+        "ns": 0,
+        "title": "Mercury",
+        "links": [
+          { "ns": 0, "title": "Mercury (planet)" },
+          { "ns": 0, "title": "Mercury (element)" },
+          { "ns": 0, "title": "Mercury (mythology)" }
+        ]
+      }
+    ]
+  }
+}

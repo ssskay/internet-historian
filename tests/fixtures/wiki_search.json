@@ -1,0 +1,26 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "searchinfo": { "totalhits": 42 },
+    "search": [
+      {
+        "ns": 0,
+        "title": "Chiikawa",
+        "pageid": 66492530,
+        "snippet": "<span class=\"searchmatch\">Chiikawa</span> is a Japanese manga series by Nagano."
+      },
+      {
+        "ns": 0,
+        "title": "Hachiware (Chiikawa)",
+        "pageid": 71234001,
+        "snippet": "a character in the <span class=\"searchmatch\">Chiikawa</span> series"
+      },
+      {
+        "ns": 0,
+        "title": "Nagano (manga artist)",
+        "pageid": 61234567,
+        "snippet": "creator of <span class=\"searchmatch\">Chiikawa</span>"
+      }
+    ]
+  }
+}

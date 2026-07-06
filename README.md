@@ -8,69 +8,85 @@
 
 **Quietly preserve the web things you love, forever.**
 
-Internet Historian is a tiny, patient tool that saves the web pages you care about into the
-[Internet Archive's Wayback Machine](https://web.archive.org/) — and keeps trying until each
-one is safely preserved. You hand it URLs (or just name a thing you love); it runs quietly in
-the background on your Mac and makes sure they don't disappear.
-
-It was built for one purpose: **saving [ちいかわ (Chiikawa)](https://en.wikipedia.org/wiki/Chiikawa)
-pages before they vanish** — official sites, the anime, the shops, the wikis. But it works for
-anything: a band, a webcomic, a favorite blog, a fandom, a single irreplaceable page.
-
-> It optimizes for **never losing a URL**, not for speed. The Wayback Machine throttles when
-> it's busy — Internet Historian treats that as normal weather, waits, and tries again. And
-> again. For as long as it takes.
+Internet Historian saves the web pages you care about into the free
+[Internet Archive](https://web.archive.org/) and keeps trying until each one is safely tucked
+away — then it re-checks nothing and bothers you about nothing. You point it at pages (or just
+name a thing you love, and it finds the real pages for you); it runs by itself in the background
+and makes sure those pages don't quietly disappear from the internet.
 
 ---
 
-## Why this exists
-
-Web pages die. Fan sites go offline, shops close, links rot. The Internet Archive can preserve
-almost any public page — but only if someone asks it to, at the right time, and keeps asking
-when the Archive is too busy to answer. That "keep patiently asking" part is tedious to do by
-hand. Internet Historian does it for you, forever, in the background.
-
-- 🗃️ **A patient queue, not a scraper.** Add URLs once; it preserves them and remembers what's done.
-- 🔁 **Throttle-proof.** Built around the Internet Archive's real rate limits. Being throttled is expected, not an error.
-- 💀 **Knows dead from busy.** A 404 or a vanished domain gets flagged as dead — but only after real confirmation. A busy Archive never counts against a page.
-- 🧠 **Talks to you (optionally).** Ships with a [Claude Code](https://claude.ai/code) skill so you can just say *"archive Chiikawa stuff"* and it finds the real pages itself.
-- 🔒 **Your keys stay yours.** API keys live in your macOS Keychain, never in this repo.
-
-## Requirements
-
-- **macOS** (uses the Keychain and `launchd`) — see [Windows / Linux](#windows--linux) below.
-- **Python 3.11+** (for `tomllib`). `python3 --version` to check.
-- A **free [archive.org](https://archive.org) account** and its S3-style API keys (setup walks you through this).
-- One dependency: [`requests`](https://pypi.org/project/requests/).
-
 ## Quickstart
 
-Install with [pipx](https://pipx.pypa.io/) — it keeps the tool isolated and puts the
-`internet-historian` command on your PATH:
+Copy-paste this. Three lines and you're archiving:
 
 ```bash
-pipx install internet-historian
-internet-historian setup
+pipx install internet-historian            # installs the `internet-historian` command onto your PATH
+internet-historian setup                   # connects your free Archive account + starts the background job
+internet-historian discover "Chiikawa"     # finds the real pages for a thing you love, and offers to save them
 ```
 
-(Plain `pip install internet-historian` works too, e.g. inside a virtualenv.)
+- **Line 1** installs the tool with [pipx](https://pipx.pypa.io/) (keeps it isolated; plain
+  `pip install internet-historian` works too). You need **macOS**, **Python 3.11+**, and a free
+  [archive.org](https://archive.org) account.
+- **Line 2** walks you through getting your free API keys (it opens the right page), saves them
+  to your macOS Keychain, and installs a `launchd` job that quietly does the archiving every 10
+  minutes. You never run anything on a schedule yourself.
+- **Line 3** is the fun part: type the name of anything — a show, a band, a webcomic, a fandom —
+  and `discover` looks it up on Wikipedia/Wikidata, gathers its **official site, its Wikipedia
+  article, and its real external links**, shows you the list, and queues the ones you pick. No
+  account or API key needed for discovery; it's just Wikipedia.
 
-`setup` will walk you through getting your free API keys (it opens the right page), store them
-in your Keychain, verify them, and install the background job that does the archiving. That's it.
+Swap `"Chiikawa"` for whatever *you* want to keep. That's the whole setup.
 
-`setup` gets you to the finish line. You never have to run anything on a schedule — a `launchd`
-job wakes up every 10 minutes, preserves whatever's queued, and goes back to sleep.
+Prefer to hand it exact links? `internet-historian add <url> <url> ...` works too (see the
+[command reference](#command-reference)).
 
-## Use it: just talk to it
+## Import your browser bookmarks
 
-The nicest way to run Internet Historian is through its [Claude Code](https://claude.ai/code)
-skill — no commands to remember. Install it once:
+Already have a pile of links saved in your browser? Export them and hand the file over:
+
+```bash
+internet-historian add --bookmarks ~/Downloads/bookmarks.html
+```
+
+Every browser (Chrome, Firefox, Safari, Edge…) can **export bookmarks to an HTML file** —
+that's the file you point at. Internet Historian reads it, skips anything it's already tracking,
+tells you *"N new, M already tracked,"* and asks before queuing anything. Add `--folder "Name"`
+to import just one bookmarks folder (and everything nested under it), and `--collection NAME` to
+tag them:
+
+```bash
+internet-historian add --bookmarks ~/Downloads/bookmarks.html --folder "Keep forever" --collection keepers
+```
+
+## Prettier status (optional)
+
+Install the `pretty` extra and `status` / `diagnose` render in color — a one-line summary, a
+per-collection table with state chips, and a little header:
+
+```bash
+pipx install "internet-historian[pretty]"   # or, if already installed: pipx inject internet-historian rich
+internet-historian status
+```
+
+![Pretty status output](docs/pretty-status.png)
+
+<!-- TODO: drop a real screenshot at docs/pretty-status.png. Until then this is a placeholder. -->
+
+It's purely cosmetic and completely optional — without `rich` installed, everything prints as
+plain text exactly as before. No new required dependencies.
+
+## If you use Claude Code
+
+Internet Historian also grows a **natural-language interface** if you use
+[Claude Code](https://claude.ai/code). Install the skill once:
 
 ```bash
 internet-historian install-skill
 ```
 
-Then, in any Claude Code session, just say what you want preserved:
+Then, in any Claude Code session, just say what you want — no commands to remember:
 
 > **You:** archive Chiikawa stuff
 >
@@ -87,32 +103,48 @@ Then, in any Claude Code session, just say what you want preserved:
 > **Claude:** *tells you plainly: just throttled by a busy Archive (leave it — it'll retry) or a
 > genuinely dead link.*
 
-You name a thing; it finds the **real, primary pages** (official sites, Wikipedia, press) over
-fan wikis unless you ask otherwise, confirms the list with you, and queues them. That's the whole
-point — you become a proper internet historian without lifting a finger.
+The skill just calls the same commands you could run yourself; it's a convenience, not a
+requirement.
 
-## Prefer the terminal?
+## Command reference
 
-Every skill action is just a CLI call you can run yourself:
-
-```bash
-internet-historian add https://www.anime-chiikawa.jp/ --collection chiikawa
-internet-historian status
-```
-
-(A shorter `historian` alias is installed too.)
+Every action is a plain CLI call. (A shorter `historian` alias is installed too.)
 
 | Command | What it does |
 |---------|--------------|
 | `setup` | Connect your Archive account + install the background job (run once) |
-| `add URL [URL ...] [--collection NAME]` | Queue URLs for preservation |
+| `discover "TERM" [--collection NAME]` | Find a subject's official/real pages via Wikipedia & Wikidata, then queue the ones you pick |
+| `add URL [URL ...] [--collection NAME]` | Queue one or more URLs for preservation |
 | `add --file urls.txt [--collection NAME]` | Queue a whole text file of URLs |
+| `add --bookmarks export.html [--folder NAME] [--collection NAME]` | Import URLs from a browser's exported bookmarks HTML |
 | `status` | See what's preserved, queued, or dead |
 | `diagnose` | Plain-English "why isn't this archived yet?" — throttled vs. genuinely dead |
 | `pause` / `resume` | Stop/restart a single URL or a whole `--collection` |
 | `check` | Raw Internet Archive capacity right now |
+| `install-skill` | Install the Claude Code skill into `~/.claude/skills` |
 
 Collections are just tags — group your Chiikawa pages, your webcomics, your blogs. No setup needed.
+
+## Why this exists
+
+Web pages die. Fan sites go offline, shops close, links rot. The Internet Archive can preserve
+almost any public page — but only if someone asks it to, at the right time, and keeps asking
+when the Archive is too busy to answer. That "keep patiently asking" part is tedious to do by
+hand. Internet Historian does it for you, forever, in the background.
+
+It was built for one purpose: **saving [ちいかわ (Chiikawa)](https://en.wikipedia.org/wiki/Chiikawa)
+pages before they vanish** — official sites, the anime, the shops, the wikis. But it works for
+anything: a band, a webcomic, a favorite blog, a fandom, a single irreplaceable page.
+
+> It optimizes for **never losing a URL**, not for speed. The Wayback Machine throttles when
+> it's busy — Internet Historian treats that as normal weather, waits, and tries again. And
+> again. For as long as it takes.
+
+- 🗃️ **A patient queue, not a scraper.** Add URLs once; it preserves them and remembers what's done.
+- 🔁 **Throttle-proof.** Built around the Internet Archive's real rate limits. Being throttled is expected, not an error.
+- 💀 **Knows dead from busy.** A 404 or a vanished domain gets flagged as dead — but only after real confirmation. A busy Archive never counts against a page.
+- 🔎 **Finds pages for you.** `discover` (and the Claude Code skill) turn a subject's name into its real, official pages — no manual link-hunting.
+- 🔒 **Your keys stay yours.** API keys live in your macOS Keychain, never in this repo.
 
 ## How it works (the 60-second version)
 

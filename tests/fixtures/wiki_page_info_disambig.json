@@ -1,0 +1,18 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 12345,
+        "ns": 0,
+        "title": "Mercury",
+        "contentmodel": "wikitext",
+        "fullurl": "https://en.wikipedia.org/wiki/Mercury",
+        "pageprops": {
+          "disambiguation": "",
+          "wikibase_item": "Q23901"
+        }
+      }
+    ]
+  }
+}

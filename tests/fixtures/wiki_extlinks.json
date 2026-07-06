@@ -1,0 +1,22 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 66492530,
+        "ns": 0,
+        "title": "Chiikawa",
+        "extlinks": [
+          { "url": "https://chiikawa.jp/" },
+          { "url": "https://www.anime-chiikawa.jp/" },
+          { "url": "//nagano-chiikawa.com/shop" },
+          { "url": "https://web.archive.org/web/2023/https://chiikawa.jp/" },
+          { "url": "https://doi.org/10.1000/xyz123" },
+          { "url": "https://www.wikidata.org/wiki/Q104814230" },
+          { "url": "https://www.jstor.org/stable/123456" },
+          { "url": "https://books.google.com/books?id=abc" }
+        ]
+      }
+    ]
+  }
+}

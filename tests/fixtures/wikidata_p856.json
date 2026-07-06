@@ -1,0 +1,30 @@
+{
+  "claims": {
+    "P856": [
+      {
+        "mainsnak": {
+          "snaktype": "value",
+          "property": "P856",
+          "datavalue": {
+            "value": "https://chiikawa.jp/",
+            "type": "string"
+          },
+          "datatype": "url"
+        },
+        "type": "statement",
+        "id": "Q104814230$OFFICIAL-1",
+        "rank": "normal"
+      },
+      {
+        "mainsnak": {
+          "snaktype": "novalue",
+          "property": "P856",
+          "datatype": "url"
+        },
+        "type": "statement",
+        "id": "Q104814230$OFFICIAL-2",
+        "rank": "normal"
+      }
+    ]
+  }
+}

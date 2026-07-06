@@ -16,6 +16,7 @@ import logging
 import logging.handlers
 import os
 import random
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -34,17 +35,38 @@ except ModuleNotFoundError:  # Python < 3.11 has no stdlib tomllib
             "    pip3 install --break-system-packages tomli"
         )
 from datetime import datetime, timedelta, timezone
+from html import unescape
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 import requests
+
+# Optional pretty terminal output. Installed via the `[pretty]` extra
+# (`pipx install "internet-historian[pretty]"`). If rich isn't importable, the
+# plain-text renderers are used instead — zero new required dependencies.
+try:
+    from rich.console import Console as _RichConsole
+    from rich.table import Table as _RichTable
+    from rich.text import Text as _RichText
+except ModuleNotFoundError:  # rich not installed — plain output only
+    _RichConsole = _RichTable = _RichText = None
 
 # ---------------------------------------------------------------------------
 # Paths & constants
 # ---------------------------------------------------------------------------
 
 APP_NAME = "internet-historian"
+__version__ = "0.2.0"
 ROOT = Path(__file__).resolve().parent
+
+# Wikimedia API etiquette: identify the client with a descriptive User-Agent
+# that includes a contact/repo. Used by the `discover` command (Wikipedia +
+# Wikidata). No API keys are involved — these are public read endpoints.
+WIKI_USER_AGENT = (
+    f"internet-historian/{__version__} "
+    "(https://github.com/ssskay/internet-historian; sara@sarakay.me)"
+)
 
 
 def _platform_state_dir() -> Path:
@@ -625,6 +647,20 @@ def cmd_check(args):
 # ---------------------------------------------------------------------------
 
 
+def _confirm(question, default=False):
+    """Yes/no prompt. Non-interactive stdin returns `default` (never blocks)."""
+    if not sys.stdin.isatty():
+        return default
+    suffix = " [Y/n] " if default else " [y/N] "
+    try:
+        ans = input(question + suffix).strip().lower()
+    except EOFError:
+        return default
+    if not ans:
+        return default
+    return ans in ("y", "yes")
+
+
 def _collect_urls(args):
     urls = list(args.urls or [])
     if args.file:
@@ -636,14 +672,15 @@ def _collect_urls(args):
     return urls
 
 
-def cmd_add(args):
-    raw = _collect_urls(args)
-    if not raw:
-        print("Nothing to add (give URLs and/or --file).", file=sys.stderr)
-        return 1
-    conn = db_connect()
+def _insert_urls(conn, raw_urls, collection):
+    """Normalize, validate, and queue a batch of URLs. Returns (added, skipped).
+
+    Shared by `add`, `discover`, and bookmarks import so they all normalize the
+    same way and log consistently. Already-tracked URLs (or unparseable ones)
+    count as skipped, never as errors.
+    """
     added = skipped = 0
-    for r in raw:
+    for r in raw_urls:
         norm = normalize_url(r)
         if not urlsplit(norm).netloc:
             log.warning("skipping unparseable url: %r", r)
@@ -653,22 +690,477 @@ def cmd_add(args):
             conn.execute(
                 "INSERT INTO urls (url, collection, status, added_at, updated_at) "
                 "VALUES (?, ?, 'queued', ?, ?)",
-                (norm, args.collection, now_iso(), now_iso()),
+                (norm, collection, now_iso(), now_iso()),
             )
             conn.commit()
             added += 1
-            log.info("added %s [collection=%s]", norm, args.collection)
+            log.info("added %s [collection=%s]", norm, collection)
         except sqlite3.IntegrityError:
             skipped += 1
             existing = conn.execute(
                 "SELECT status FROM urls WHERE url=?", (norm,)
             ).fetchone()
             log.info("already tracked, status=%s: %s", existing["status"], norm)
+    return added, skipped
+
+
+def cmd_add(args):
+    if getattr(args, "bookmarks", None):
+        return cmd_add_bookmarks(args)
+    raw = _collect_urls(args)
+    if not raw:
+        print("Nothing to add (give URLs, --file, or --bookmarks).", file=sys.stderr)
+        return 1
+    conn = db_connect()
+    added, skipped = _insert_urls(conn, raw, args.collection)
     total_queued = conn.execute(
         "SELECT COUNT(*) c FROM urls WHERE status IN ('queued','submitted')"
     ).fetchone()["c"]
     conn.close()
     print(f"added {added}, skipped {skipped}, {total_queued} in flight (queued+submitted)")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Bookmarks import  (add --bookmarks)
+# ---------------------------------------------------------------------------
+
+
+class _BookmarksParser(HTMLParser):
+    """Parse the Netscape bookmarks HTML every browser exports.
+
+    The format nests folders as `<DT><H3>Name</H3>` followed by a `<DL>` block;
+    links are `<DT><A HREF="...">Title</A>`. We track the folder stack so each
+    link carries the tuple of ancestor folder names, which lets `--folder` scope
+    the import to a single subtree.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.links = []          # list of (folder_path_tuple, href)
+        self._folders = []       # current ancestor folder names
+        self._capture = None     # 'h3', 'a', or None
+        self._h3_text = ""
+        self._href = None
+
+    def handle_starttag(self, tag, attrs):
+        t = tag.lower()
+        if t == "h3":
+            self._capture = "h3"
+            self._h3_text = ""
+        elif t == "a":
+            self._href = dict(attrs).get("href")
+            self._capture = "a"
+
+    def handle_data(self, data):
+        if self._capture == "h3":
+            self._h3_text += data
+
+    def handle_endtag(self, tag):
+        t = tag.lower()
+        if t == "h3" and self._capture == "h3":
+            self._folders.append(self._h3_text.strip())
+            self._capture = None
+        elif t == "a" and self._capture == "a":
+            if self._href:
+                self.links.append((tuple(self._folders), self._href))
+            self._href = None
+            self._capture = None
+        elif t == "dl" and self._folders:
+            # Closing a folder's <DL>. The outermost (root) <DL> has no matching
+            # <H3>, so the empty-stack guard absorbs its trailing </DL>.
+            self._folders.pop()
+
+
+def parse_bookmarks(html, folder=None):
+    """Return the list of hrefs in a Netscape bookmarks export.
+
+    If `folder` is given, only links whose ancestor path contains a folder of
+    that name (case-insensitive) — i.e. the whole subtree under it — are kept.
+    Only http(s) links are returned; javascript:/place: bookmarks are dropped.
+    """
+    p = _BookmarksParser()
+    p.feed(html)
+    want = folder.lower() if folder else None
+    out = []
+    for path, href in p.links:
+        if not href or not href.lower().startswith(("http://", "https://")):
+            continue
+        if want is not None and want not in [f.lower() for f in path]:
+            continue
+        out.append(unescape(href))
+    return out
+
+
+def cmd_add_bookmarks(args):
+    path = Path(args.bookmarks)
+    if not path.exists():
+        print(f"Bookmarks file not found: {path}", file=sys.stderr)
+        return 1
+    html = path.read_text(encoding="utf-8", errors="replace")
+    hrefs = parse_bookmarks(html, folder=args.folder)
+    scope = f" in folder '{args.folder}'" if args.folder else ""
+    if not hrefs:
+        print(f"No http(s) bookmarks found{scope} in {path}.", file=sys.stderr)
+        return 1
+    log.info("bookmarks: parsed %d link(s) from %s%s", len(hrefs), path, scope)
+
+    conn = db_connect()
+    # Split into new vs. already-tracked (by normalized URL), preserving order
+    # and de-duplicating within the file itself.
+    seen = set()
+    fresh, already = [], 0
+    for h in hrefs:
+        norm = normalize_url(h)
+        if not urlsplit(norm).netloc or norm in seen:
+            continue
+        seen.add(norm)
+        exists = conn.execute("SELECT 1 FROM urls WHERE url=?", (norm,)).fetchone()
+        if exists:
+            already += 1
+        else:
+            fresh.append(h)
+
+    print(f"{len(fresh)} new, {already} already tracked"
+          f" (from {len(hrefs)} bookmark link(s){scope}).")
+    if not fresh:
+        print("Nothing new to queue.")
+        conn.close()
+        return 0
+
+    if not _confirm(f"Queue {len(fresh)} new URL(s) to collection '{args.collection}'?"):
+        print("Cancelled; nothing queued.")
+        conn.close()
+        return 0
+
+    added, skipped = _insert_urls(conn, fresh, args.collection)
+    conn.close()
+    print(f"added {added}, skipped {skipped}.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: discover  (Wikipedia / Wikidata as a no-LLM curation backend)
+# ---------------------------------------------------------------------------
+
+WIKIDATA_API = "https://www.wikidata.org/w/api.php"
+
+# External links Wikipedia articles carry that are references/identifiers, not
+# the subject's own web presence. Dropped from discover candidates.
+_EXTLINK_JUNK_SUBSTR = (
+    "archive.org", "web.archive.org", "doi.org", "jstor.org", "worldcat.org",
+    "ncbi.nlm.nih.gov", "pubmed", "wikidata.org", "wikimedia.org",
+    "wikipedia.org", "wiktionary.org", "wikisource.org", "wikimediafoundation",
+    "viaf.org", "id.loc.gov", "loc.gov/authorities", "d-nb.info",
+    "catalogue.bnf.fr", "data.bnf.fr", "idref.fr", "isni.org",
+    "musicbrainz.org", "books.google", "google.com/books", "semanticscholar.org",
+    "snaccooperative.org", "orcid.org", "researchgate.net", "handle.net",
+    " researcherid", " isbnsearch.org", "zbmath.org",
+)
+
+
+def wiki_session():
+    """A plain requests session with a polite Wikimedia User-Agent. No IA keys."""
+    s = requests.Session()
+    s.headers.update({"User-Agent": WIKI_USER_AGENT, "Accept": "application/json"})
+    return s
+
+
+def _wiki_api_base(lang):
+    return f"https://{lang}.wikipedia.org/w/api.php"
+
+
+def _strip_html(s):
+    """Flatten the little `<span class="searchmatch">` markup in search snippets."""
+    return unescape(re.sub(r"<[^>]+>", "", s or "")).strip()
+
+
+def parse_search_results(data):
+    """From an action=query&list=search response -> [{title, pageid, snippet}]."""
+    hits = ((data or {}).get("query") or {}).get("search") or []
+    out = []
+    for h in hits:
+        out.append({
+            "title": h.get("title", ""),
+            "pageid": h.get("pageid"),
+            "snippet": _strip_html(h.get("snippet", "")),
+        })
+    return out
+
+
+def parse_page_info(data):
+    """From prop=pageprops|info&inprop=url -> {title, qid, url, is_disambiguation}.
+
+    Returns None if the page is missing. Assumes formatversion=2 (pages is a list).
+    """
+    pages = ((data or {}).get("query") or {}).get("pages") or []
+    if not pages:
+        return None
+    page = pages[0]
+    if page.get("missing"):
+        return None
+    props = page.get("pageprops") or {}
+    return {
+        "title": page.get("title", ""),
+        "qid": props.get("wikibase_item"),
+        "url": page.get("fullurl") or page.get("canonicalurl"),
+        "is_disambiguation": "disambiguation" in props,
+    }
+
+
+def parse_official_sites(data):
+    """From a Wikidata wbgetclaims P856 response -> [official-website url, ...]."""
+    claims = ((data or {}).get("claims") or {}).get("P856") or []
+    out = []
+    for c in claims:
+        snak = c.get("mainsnak") or {}
+        if snak.get("snaktype") != "value":
+            continue
+        val = (snak.get("datavalue") or {}).get("value")
+        if isinstance(val, str) and val:
+            out.append(val)
+    return out
+
+
+def parse_extlinks(data):
+    """From prop=extlinks -> [url, ...]. Handles both formatversion shapes."""
+    pages = ((data or {}).get("query") or {}).get("pages") or []
+    out = []
+    for page in pages:
+        for e in page.get("extlinks") or []:
+            url = e.get("url") if isinstance(e, dict) else None
+            url = url or (e.get("*") if isinstance(e, dict) else None)
+            if url:
+                # Protocol-relative links (//example.com) show up here; default
+                # them to https so they normalize and queue cleanly.
+                if url.startswith("//"):
+                    url = "https:" + url
+                out.append(url)
+    return out
+
+
+def filter_extlinks(urls):
+    """Drop reference/identifier links and de-dupe, keeping the subject's own sites."""
+    out, seen = [], set()
+    for u in urls:
+        low = (u or "").lower()
+        if not low.startswith(("http://", "https://")):
+            continue
+        if any(j in low for j in _EXTLINK_JUNK_SUBSTR):
+            continue
+        norm = normalize_url(u)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        out.append(u)
+    return out
+
+
+def parse_disambiguation_options(data):
+    """From prop=links&plnamespace=0 -> [article title, ...]."""
+    pages = ((data or {}).get("query") or {}).get("pages") or []
+    out = []
+    for page in pages:
+        for l in page.get("links") or []:
+            title = l.get("title")
+            if title:
+                out.append(title)
+    return out
+
+
+def wiki_search(session, term, lang="en"):
+    data = _get_json(session, _wiki_api_base(lang), params={
+        "action": "query", "list": "search", "srsearch": term,
+        "srlimit": 10, "format": "json", "formatversion": 2,
+    })
+    return parse_search_results(data)
+
+
+def wiki_page_info(session, title, lang="en"):
+    data = _get_json(session, _wiki_api_base(lang), params={
+        "action": "query", "prop": "pageprops|info", "inprop": "url",
+        "titles": title, "format": "json", "formatversion": 2,
+    })
+    return parse_page_info(data)
+
+
+def wiki_extlinks(session, title, lang="en"):
+    data = _get_json(session, _wiki_api_base(lang), params={
+        "action": "query", "prop": "extlinks", "titles": title,
+        "ellimit": "max", "format": "json", "formatversion": 2,
+    })
+    return filter_extlinks(parse_extlinks(data))
+
+
+def wiki_disambiguation_options(session, title, lang="en"):
+    data = _get_json(session, _wiki_api_base(lang), params={
+        "action": "query", "prop": "links", "titles": title,
+        "plnamespace": 0, "pllimit": "max", "format": "json", "formatversion": 2,
+    })
+    return parse_disambiguation_options(data)
+
+
+def wikidata_official_sites(session, qid):
+    if not qid:
+        return []
+    data = _get_json(session, WIKIDATA_API, params={
+        "action": "wbgetclaims", "entity": qid, "property": "P856", "format": "json",
+    })
+    return parse_official_sites(data)
+
+
+def parse_selection(text, count):
+    """Parse a discover selection line into a sorted list of 0-based indices.
+
+    'a'/'all' -> every candidate. Comma/space-separated numbers -> those (1-based
+    in, 0-based out). Out-of-range and garbage tokens are ignored. Empty -> [].
+    """
+    t = (text or "").strip().lower()
+    if not t:
+        return []
+    if t in ("a", "all"):
+        return list(range(count))
+    picks = set()
+    for tok in re.split(r"[,\s]+", t):
+        if tok.isdigit():
+            n = int(tok)
+            if 1 <= n <= count:
+                picks.add(n - 1)
+    return sorted(picks)
+
+
+def _slug(term):
+    s = re.sub(r"[^a-z0-9]+", "-", term.lower()).strip("-")
+    return s or "discover"
+
+
+def _discover_candidates(session, info):
+    """Assemble labelled candidates for a chosen article, most-primary first.
+
+    Order: official website(s) (Wikidata P856), then the Wikipedia article,
+    then filtered external links. De-duplicated by normalized URL so an official
+    site listed in both P856 and the article's external links appears once.
+    """
+    candidates = []
+    seen = set()
+
+    def add(url, label):
+        if not url:
+            return
+        norm = normalize_url(url)
+        if norm in seen or not urlsplit(norm).netloc:
+            return
+        seen.add(norm)
+        candidates.append({"url": url, "label": label})
+
+    try:
+        for site in wikidata_official_sites(session, info.get("qid")):
+            add(site, "official site")
+    except Transient as e:
+        log.warning("discover: Wikidata lookup failed: %s", e)
+    add(info.get("url"), "wikipedia")
+    try:
+        for link in wiki_extlinks(session, info["title"]):
+            add(link, "external link")
+    except Transient as e:
+        log.warning("discover: extlinks lookup failed: %s", e)
+    return candidates
+
+
+def cmd_discover(args):
+    term = args.term
+    lang = args.lang
+    session = wiki_session()
+
+    try:
+        results = wiki_search(session, term, lang)
+    except Transient as e:
+        print(f"Couldn't reach Wikipedia ({e}). Try again in a moment.", file=sys.stderr)
+        return 1
+
+    if not results:
+        print(f"No Wikipedia article found for {term!r}. "
+              "Try a different spelling or a broader term.")
+        return 0
+
+    interactive = sys.stdin.isatty()
+
+    # Pick the article. One hit -> use it; several -> numbered pick-list.
+    if len(results) == 1 or not interactive:
+        chosen_title = results[0]["title"]
+        if len(results) > 1:
+            print(f"Multiple matches for {term!r}; using the top hit "
+                  f"({chosen_title!r}). Re-run in a terminal to choose.")
+    else:
+        print(f"\nMatches for {term!r}:\n")
+        for i, r in enumerate(results, 1):
+            snip = f" — {r['snippet']}" if r["snippet"] else ""
+            print(f"  {i}. {r['title']}{snip}")
+        raw = input("\nWhich one? [number, default 1]: ").strip()
+        idx = int(raw) - 1 if raw.isdigit() and 1 <= int(raw) <= len(results) else 0
+        chosen_title = results[idx]["title"]
+
+    try:
+        info = wiki_page_info(session, chosen_title, lang)
+    except Transient as e:
+        print(f"Couldn't load {chosen_title!r} ({e}).", file=sys.stderr)
+        return 1
+    if info is None:
+        print(f"Article {chosen_title!r} could not be loaded.", file=sys.stderr)
+        return 1
+
+    # Resolve a disambiguation page to a concrete article.
+    if info.get("is_disambiguation"):
+        try:
+            options = wiki_disambiguation_options(session, chosen_title, lang)
+        except Transient:
+            options = []
+        if options and interactive:
+            print(f"\n{chosen_title!r} is a disambiguation page. Did you mean:\n")
+            for i, t in enumerate(options[:20], 1):
+                print(f"  {i}. {t}")
+            raw = input("\nWhich one? [number, default 1]: ").strip()
+            shown = options[:20]
+            idx = int(raw) - 1 if raw.isdigit() and 1 <= int(raw) <= len(shown) else 0
+            chosen_title = shown[idx]
+            try:
+                info = wiki_page_info(session, chosen_title, lang)
+            except Transient as e:
+                print(f"Couldn't load {chosen_title!r} ({e}).", file=sys.stderr)
+                return 1
+            if info is None:
+                print(f"Article {chosen_title!r} could not be loaded.", file=sys.stderr)
+                return 1
+        else:
+            print(f"{chosen_title!r} is a disambiguation page; "
+                  "re-run in a terminal to pick a specific article.")
+
+    log.info("discover: chosen article %r (qid=%s)", info["title"], info.get("qid"))
+    candidates = _discover_candidates(session, info)
+
+    print(f"\nCandidates for {info['title']!r}:\n")
+    for i, c in enumerate(candidates, 1):
+        print(f"  {i}. [{c['label']}] {c['url']}")
+
+    if not interactive:
+        print("\n(Not a terminal — nothing queued. Re-run interactively to select.)")
+        return 0
+
+    raw = input(
+        "\nQueue which? [comma-separated numbers, 'a' for all, empty to cancel]: "
+    )
+    picks = parse_selection(raw, len(candidates))
+    if not picks:
+        print("Nothing selected; nothing queued.")
+        return 0
+
+    collection = args.collection or _slug(term)
+    urls = [candidates[i]["url"] for i in picks]
+    conn = db_connect()
+    added, skipped = _insert_urls(conn, urls, collection)
+    conn.close()
+    print(f"\nadded {added}, skipped {skipped} to collection '{collection}'. "
+          "The background job will preserve them patiently.")
     return 0
 
 
@@ -1065,8 +1557,192 @@ def _location_kind(p: Path) -> str:
         return "per-user"
 
 
+# ---------------------------------------------------------------------------
+# Pretty (rich) rendering — used by status/diagnose when the [pretty] extra is
+# installed. Everything degrades to the plain-text path when rich is absent.
+# ---------------------------------------------------------------------------
+
+_STATE_STYLE = {
+    "archived": "green",
+    "queued": "cyan",
+    "throttled": "yellow",
+    "submitted": "blue",
+    "paused": "magenta",
+    "dead": "red",
+}
+
+
+def _rich_console():
+    """A rich Console, or None when the [pretty] extra isn't installed."""
+    if _RichConsole is None:
+        return None
+    return _RichConsole(highlight=False)
+
+
+def _print_banner(console):
+    console.print()
+    console.print("  I N T E R N E T   H I S T O R I A N  ",
+                  style="bold white on dark_cyan")
+    console.print("  🏛  preserving the web things you love", style="dim italic")
+    console.print()
+
+
+def _throttled_count(conn, collection=None):
+    """Queued rows currently backing off (a future next_attempt_at)."""
+    sql = ("SELECT COUNT(*) c FROM urls WHERE status='queued' "
+           "AND next_attempt_at IS NOT NULL AND next_attempt_at > ?")
+    params = [now_iso()]
+    if collection is not None:
+        sql += " AND collection=?"
+        params.append(collection)
+    return conn.execute(sql, params).fetchone()["c"]
+
+
+def _status_counts(conn):
+    by = {r["status"]: r["c"] for r in conn.execute(
+        "SELECT status, COUNT(*) c FROM urls GROUP BY status")}
+    throttled = _throttled_count(conn)
+    return {
+        "archived": by.get("archived", 0),
+        "queued": max(0, by.get("queued", 0) - throttled),
+        "throttled": throttled,
+        "submitted": by.get("submitted", 0),
+        "paused": by.get("paused", 0),
+        "dead": by.get("dead", 0),
+        "total": sum(by.values()),
+    }
+
+
+def _summary_line(console, counts):
+    labels = [
+        ("archived", "archived"),
+        ("queued", "queued"),
+        ("throttled", "throttled (will retry)"),
+        ("submitted", "submitted"),
+        ("paused", "paused"),
+        ("dead", "dead"),
+    ]
+    text = _RichText()
+    first = True
+    for key, label in labels:
+        n = counts[key]
+        # Always show archived+queued; hide the rest when zero to keep it tidy.
+        if n == 0 and key not in ("archived", "queued"):
+            continue
+        if not first:
+            text.append(" · ", style="dim")
+        text.append(f"{n} ", style=f"bold {_STATE_STYLE[key]}")
+        text.append(label, style=_STATE_STYLE[key])
+        first = False
+    console.print(text)
+
+
+def _cell(n, style):
+    return _RichText(str(n), style=f"bold {style}") if n else _RichText("·", style="dim")
+
+
+def _render_collection_table(console, conn):
+    """Per-collection table with colored state chips. No-op if the queue is empty."""
+    grid = {}
+    for r in conn.execute(
+            "SELECT collection, status, COUNT(*) c FROM urls GROUP BY collection, status"):
+        grid.setdefault(r["collection"], {})[r["status"]] = r["c"]
+    if not grid:
+        return
+    table = _RichTable(box=None, pad_edge=False, expand=False, title_justify="left")
+    table.add_column("collection", style="bold")
+    for label in ("archived", "queued", "throttled", "submitted", "dead"):
+        table.add_column(label, justify="right")
+    for name in sorted(grid):
+        g = grid[name]
+        throttled = _throttled_count(conn, name)
+        queued = max(0, g.get("queued", 0) - throttled)
+        table.add_row(
+            name,
+            _cell(g.get("archived", 0), _STATE_STYLE["archived"]),
+            _cell(queued, _STATE_STYLE["queued"]),
+            _cell(throttled, _STATE_STYLE["throttled"]),
+            _cell(g.get("submitted", 0), _STATE_STYLE["submitted"]),
+            _cell(g.get("dead", 0), _STATE_STYLE["dead"]),
+        )
+    console.print(table)
+
+
+def _render_status_rich(console, conn):
+    _print_banner(console)
+    _summary_line(console, _status_counts(conn))
+    console.print()
+
+    console.print(f"[dim]queue.db[/]  {DB_PATH}  [dim]({_location_kind(DB_PATH)})[/]")
+    console.print(f"[dim]logs[/]      {LOGS_DIR}  [dim]({_location_kind(LOGS_DIR)})[/]")
+    cfg_note = "loaded" if CONFIG_PATH.exists() else "using built-in defaults"
+    console.print(f"[dim]config[/]    {CONFIG_PATH}  [dim]({cfg_note})[/]")
+    console.print()
+    _render_collection_table(console, conn)
+
+    oldest = conn.execute(
+        "SELECT url, added_at FROM urls WHERE status='queued' "
+        "ORDER BY added_at ASC LIMIT 1"
+    ).fetchone()
+    if oldest:
+        console.print(f"\n[dim]oldest waiting:[/] {oldest['url']} "
+                      f"[dim](queued {human_age(oldest['added_at'])} ago)[/]")
+
+    dead = conn.execute(
+        "SELECT url, dead_reason FROM urls WHERE status='dead' ORDER BY updated_at DESC"
+    ).fetchall()
+    if dead:
+        console.print(f"\n[red]Dead links ({len(dead)})[/] — the target answered and it was bad:")
+        for r in dead:
+            console.print(f"  [red]•[/] {r['url']}  [dim]({r['dead_reason']})[/]")
+
+    conn.close()
+    try:
+        session = make_session()
+        avail, proc = user_status(session)
+        console.print(f"\n[dim]IA capture slots right now:[/] "
+                      f"[green]{avail}[/] available, [blue]{proc}[/] processing")
+    except SystemExit:
+        raise
+    except Exception as e:
+        console.print(f"\n[dim](IA slot check unavailable: {e})[/]")
+
+
+def _render_diagnose_rich(console, conn, rows, dead_conf):
+    _print_banner(console)
+    _summary_line(console, _status_counts(conn))
+    console.print()
+    _render_collection_table(console, conn)
+    console.print()
+    console.print(
+        "[dim]A throttled URL is NOT a failure. IA throttles under load as a matter of "
+        "course; the queue retries forever with backoff. Only a page whose own server "
+        f"keeps answering badly, confirmed {dead_conf}× a day apart, is ever marked dead.[/]"
+    )
+    console.print()
+    if not rows:
+        console.print("[green]No problem URLs.[/] Everything is archived or waiting its turn.")
+        return
+    cat_style = {"dead": "red", "throttle": "yellow", "candidate": "yellow",
+                 "transient": "cyan", "stuck": "bold red"}
+    table = _RichTable(expand=True)
+    table.add_column("URL", overflow="fold", style="bold")
+    table.add_column("state", no_wrap=True)
+    table.add_column("verdict", overflow="fold")
+    for r in rows:
+        verdict, cat = _diagnose_verdict(r, dead_conf)
+        style = cat_style.get(cat, "white")
+        table.add_row(r["url"], _RichText(r["status"], style=style),
+                      _RichText(verdict, style=style))
+    console.print(table)
+
+
 def cmd_status(args):
     conn = db_connect()
+    console = _rich_console()
+    if console is not None:
+        _render_status_rich(console, conn)
+        return 0
     print("Internet Historian — preserving the web things you love.\n")
 
     print("State lives in:")
@@ -1141,6 +1817,24 @@ def cmd_status(args):
 # ---------------------------------------------------------------------------
 
 
+def _diagnose_verdict(r, dead_conf):
+    """Return (verdict_text, category) for a problem row. Category drives color."""
+    if r["status"] == "dead":
+        return (f"DEAD LINK — {r['dead_reason']} (the target itself is gone/blocked)",
+                "dead")
+    kind = classify(r["last_error"] or "")
+    if kind in ("throttle", "daily"):
+        return ("throttled (IA-side) — will retry automatically, nothing to do",
+                "throttle")
+    if kind == "dead":
+        return (f"likely dead link (strikes: {r['dead_strikes']}/{dead_conf}) — "
+                "confirming before giving up", "candidate")
+    nxt = parse_iso(r["next_attempt_at"])
+    if nxt and nxt > now():
+        return "transient error — backing off, will retry automatically", "transient"
+    return "stuck — investigate (unclassified error, not backing off)", "stuck"
+
+
 def cmd_diagnose(args):
     conn = db_connect()
     cfg = load_config()
@@ -1150,6 +1844,12 @@ def cmd_diagnose(args):
         "AND (last_error IS NOT NULL OR status='dead') "
         "ORDER BY updated_at DESC"
     ).fetchall()
+
+    console = _rich_console()
+    if console is not None:
+        _render_diagnose_rich(console, conn, rows, dead_conf)
+        conn.close()
+        return 0
 
     print("Internet Historian — diagnosis\n")
     print("Reminder: a throttled URL is NOT a failure. IA's Save-Page-Now API")
@@ -1164,23 +1864,7 @@ def cmd_diagnose(args):
         return 0
 
     for r in rows:
-        if r["status"] == "dead":
-            verdict = f"DEAD LINK — {r['dead_reason']} (the target itself is gone/blocked)"
-        else:
-            kind = classify(r["last_error"] or "")
-            if kind in ("throttle", "daily"):
-                verdict = "throttled (IA-side) — will retry automatically, nothing to do"
-            elif kind == "dead":
-                verdict = (
-                    f"likely dead link (strikes: {r['dead_strikes']}/{dead_conf}) — "
-                    "confirming before giving up"
-                )
-            else:
-                nxt = parse_iso(r["next_attempt_at"])
-                if nxt and nxt > now():
-                    verdict = "transient error — backing off, will retry automatically"
-                else:
-                    verdict = "stuck — investigate (unclassified error, not backing off)"
+        verdict, _ = _diagnose_verdict(r, dead_conf)
         print(f"• {r['url']}")
         print(f"    status={r['status']} attempts={r['attempts']} last_error={r['last_error']}")
         print(f"    -> {verdict}")
@@ -1297,6 +1981,18 @@ def build_parser():
     a.add_argument("urls", nargs="*")
     a.add_argument("--collection", default="default")
     a.add_argument("--file", help="text file of URLs, one per line")
+    a.add_argument("--bookmarks", help="a browser's exported bookmarks HTML file")
+    a.add_argument("--folder", help="with --bookmarks: only import this folder's subtree")
+
+    dis = sub.add_parser(
+        "discover",
+        help="find a subject's official pages via Wikipedia/Wikidata, then queue them",
+    )
+    dis.add_argument("term", help="what to look up, e.g. \"Chiikawa\"")
+    dis.add_argument("--collection", default=None,
+                     help="collection to queue into (defaults to a slug of TERM)")
+    dis.add_argument("--lang", default="en",
+                     help="Wikipedia language edition to search (default: en)")
 
     d = sub.add_parser("drain", help="run one archiving cycle (launchd calls this)")
     d.add_argument("--dead-confirmations", type=int, default=None)
@@ -1321,6 +2017,7 @@ def build_parser():
 COMMANDS = {
     "check": cmd_check,
     "add": cmd_add,
+    "discover": cmd_discover,
     "drain": cmd_drain,
     "setup": cmd_setup,
     "install-skill": cmd_install_skill,

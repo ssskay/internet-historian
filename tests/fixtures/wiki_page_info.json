@@ -1,0 +1,18 @@
+{
+  "batchcomplete": true,
+  "query": {
+    "pages": [
+      {
+        "pageid": 66492530,
+        "ns": 0,
+        "title": "Chiikawa",
+        "contentmodel": "wikitext",
+        "fullurl": "https://en.wikipedia.org/wiki/Chiikawa",
+        "canonicalurl": "https://en.wikipedia.org/wiki/Chiikawa",
+        "pageprops": {
+          "wikibase_item": "Q104814230"
+        }
+      }
+    ]
+  }
+}

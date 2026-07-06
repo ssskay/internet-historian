@@ -2,9 +2,13 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.version]
+# Single source of truth: __version__ in historian.py.
+path = "historian.py"
+
 [project]
 name = "internet-historian"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Quietly preserve the web things you love, forever — a patient, Internet-Archive-only archiving queue."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,6 +28,11 @@ classifiers = [
     "Topic :: System :: Archiving",
 ]
 dependencies = ["requests>=2.31"]
+
+# Optional pretty terminal output for `status` / `diagnose`.
+# Install with: pipx install "internet-historian[pretty]"
+[project.optional-dependencies]
+pretty = ["rich>=13"]
 
 [project.urls]
 Homepage = "https://github.com/ssskay/internet-historian"
@@ -46,6 +55,9 @@ include = [
     "SKILL.md",
     "config.toml",
     "test_historian.py",
+    "test_discover.py",
+    "test_bookmarks.py",
+    "tests/fixtures/*",
     "README.md",
     "LICENSE",
 ]

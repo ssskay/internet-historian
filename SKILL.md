@@ -16,7 +16,7 @@ All logic lives in the `internet-historian` command (installed on the user's PAT
 is a **thin** control surface: it knows which command to run and how to read the output. Do
 not reimplement queue, backoff, or SPN2 logic here — call the CLI.
 
-## The four verbs
+## The commands
 
 Run the `internet-historian` command from anywhere (it's on the PATH). If it isn't found, the
 tool isn't installed — tell the user to run `pipx install internet-historian`.
@@ -25,6 +25,8 @@ tool isn't installed — tell the user to run `pipx install internet-historian`.
 |--------|---------|
 | Preserve one or more URLs | `internet-historian add URL [URL ...] [--collection NAME]` |
 | Preserve a whole list from a file | `internet-historian add --file /path/to/urls.txt [--collection NAME]` |
+| Import a browser's exported bookmarks | `internet-historian add --bookmarks export.html [--folder NAME] [--collection NAME]` |
+| Find a subject's real pages (no LLM — Wikipedia/Wikidata) | `internet-historian discover "TERM" [--collection NAME]` |
 | "How's the archive doing?" | `internet-historian status` |
 | "Why hasn't X been saved?" | `internet-historian diagnose` |
 | Install / repair the background job | `internet-historian setup` |
@@ -32,6 +34,21 @@ tool isn't installed — tell the user to run `pipx install internet-historian`.
 Also available: `pause` / `resume` (a URL or a whole `--collection`), `check` (raw IA slot
 availability), and `install-skill` (re-install this skill). `drain` exists but you never call
 it by hand — launchd runs it.
+
+**When to use `discover` vs. doing the finding yourself:** `discover` is a no-LLM path that
+pulls a subject's official website (Wikidata P856), its Wikipedia article, and its filtered
+external links, then prompts a selection in the terminal. It's great for terminal users and as a
+fallback. But when *you* (the skill) are driving, your own web-search discovery below is richer —
+you can search the native language, weigh press vs. fan sources, and verify liveness. Prefer your
+own discovery flow; reach for `discover` when the user explicitly asks for it or when you want a
+quick, dependency-free candidate list to refine.
+
+### add --bookmarks
+
+- Point at the HTML file a browser exports (`add --bookmarks path.html`). `--folder "Name"`
+  limits the import to that folder's subtree; `--collection NAME` tags the results.
+- It de-dupes against what's already tracked and prints `N new, M already tracked`, then asks
+  before queuing. Non-interactive runs queue nothing (they can't confirm) — run it in a terminal.
 
 ### add
 
