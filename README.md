@@ -15,6 +15,8 @@ away — then it re-checks nothing and bothers you about nothing. You point it a
 name a thing you love, and it finds the real pages for you); it runs by itself in the background
 and makes sure those pages don't quietly disappear from the internet.
 
+![Three steps: you name what you love, it finds the real pages, it keeps them forever in the Internet Archive](docs/how-it-works.png)
+
 ---
 
 ## Quickstart
@@ -38,7 +40,9 @@ internet-historian discover "Chiikawa"     # finds the real pages for a thing yo
   article, and its real external links**, shows you the list, and queues the ones you pick. No
   account or API key needed for discovery; it's just Wikipedia.
 
-Swap `"Chiikawa"` for whatever *you* want to keep. That's the whole setup.
+Swap `"Chiikawa"` for whatever *you* want to keep. That's the whole setup — here it is as a picture:
+
+![Setup steps: install, get your free archive.org keys, paste them once into setup; then keys are verified, stored in your Mac's Keychain, and the background job takes over](docs/setup-flow.png)
 
 Prefer to hand it exact links? `internet-historian add <url> <url> ...` works too (see the
 [command reference](#command-reference)).
@@ -131,6 +135,8 @@ almost any public page — but only if someone asks it to, at the right time, an
 when the Archive is too busy to answer. That "keep patiently asking" part is tedious to do by
 hand. Internet Historian does it for you, forever, in the background.
 
+![By hand you are the retry logic: open web.archive.org, paste one URL, get told it's busy, remember to come back, repeat. With Internet Historian: name what you love once, walk away, every live page ends up preserved](docs/why-not-by-hand.png)
+
 It was built for one purpose: **saving [ちいかわ (Chiikawa)](https://en.wikipedia.org/wiki/Chiikawa)
 pages before they vanish** — official sites, the anime, the shops, the wikis. But it works for
 anything: a band, a webcomic, a favorite blog, a fandom, a single irreplaceable page.
@@ -147,12 +153,7 @@ anything: a band, a webcomic, a favorite blog, a fandom, a single irreplaceable 
 
 ## How it works (the 60-second version)
 
-```
-  you ──add──▶ queue.db (SQLite) ◀──drain── launchd (every 10 min)
-                                              │
-                                              ▼
-                                   Internet Archive "Save Page Now"
-```
+![You add pages to queue.db; a launchd drain runs every 10 minutes and submits them to the Internet Archive's Save Page Now. A page's life: queued, submitted, archived — a busy Archive loops back to queued and retries forever; dead only when the page itself is gone, confirmed 3 times a day apart](docs/under-the-hood.png)
 
 - **`historian.py`** is the whole engine: a queue + an Internet Archive client, in one file.
 - **`queue.db`** remembers every URL and its state (queued → submitted → archived / dead).
@@ -163,6 +164,13 @@ anything: a band, a webcomic, a favorite blog, a fandom, a single irreplaceable 
 Failures are classified carefully: rate-limits and timeouts retry forever with backoff; only a
 page whose own server keeps answering badly (404, dead DNS, blocked) is marked dead, and only
 after 3 confirmations spaced a day apart. Being throttled by a busy Archive **never** kills a URL.
+
+### Polite by design
+
+The Wayback Machine is free, shared infrastructure, so Internet Historian is built to be a
+considerate guest — it stays well inside the Archive's real limits even though nobody's checking:
+
+![Politeness rules: leaves 2 capture slots free for your own browser saves, at most 5 tries per page per day (half of what the Archive allows), never re-saves a page fresher than the 30-day dedup window, and backs off up to a full day when the Archive says slow down](docs/polite-by-design.png)
 
 ## What it does NOT do (by design, for now)
 
