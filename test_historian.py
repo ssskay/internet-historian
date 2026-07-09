@@ -5,7 +5,9 @@ Run: python3 -m unittest test_historian.py -v
 The HTTP layer is mocked throughout — no real network calls.
 """
 
+import contextlib
 import copy
+import io
 import logging
 import tempfile
 import unittest
@@ -269,6 +271,33 @@ class ConfigOverlayTests(unittest.TestCase):
         )
         cfg = historian.load_config()
         self.assertEqual(cfg["collections"]["personal"], {"refresh_days": 90})
+
+
+class NonMacBehaviorTests(unittest.TestCase):
+    """On Linux/Windows every dead end must be a friendly message, not a traceback."""
+
+    def test_setup_declines_politely_off_macos(self):
+        out = io.StringIO()
+        with mock.patch("sys.platform", "linux"), contextlib.redirect_stdout(out):
+            rc = historian.cmd_setup(mock.Mock())
+        self.assertEqual(rc, 1)
+        text = out.getvalue()
+        self.assertIn("cron", text)
+        self.assertIn("IA_ACCESS_KEY", text)
+        self.assertNotIn("Traceback", text)
+
+    def test_missing_keys_message_skips_keychain_advice_off_macos(self):
+        err = io.StringIO()
+        with mock.patch("sys.platform", "linux"), \
+                mock.patch.object(historian, "read_credentials",
+                                  return_value=(None, None)), \
+                contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as cm:
+                historian.get_credentials()
+        self.assertEqual(cm.exception.code, 1)
+        text = err.getvalue()
+        self.assertIn("IA_ACCESS_KEY", text)
+        self.assertNotIn("security add-generic-password", text)
 
 
 if __name__ == "__main__":

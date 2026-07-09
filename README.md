@@ -196,16 +196,34 @@ working for weeks without you. Other excellent tools in this space, and how they
 
 ## Windows / Linux
 
-Not yet — but it's close. The **engine** (`historian.py`: the queue, the SQLite store, the
-Archive client) is pure Python and already cross-platform. Only **two** pieces are macOS-specific:
+*Officially* supported: not yet. *Actually usable today*: yes. The **engine** (`historian.py`:
+the queue, the SQLite store, the Archive client) is pure Python and cross-platform — CI runs the
+full test suite on Linux — and state already lands in the right place (XDG dirs on Linux,
+`LOCALAPPDATA` on Windows). Only the two macOS conveniences are missing, and both have
+one-line stand-ins:
 
-1. **Key storage** uses the macOS Keychain (via the `security` command). *There's already an
-   env-var fallback* — set `IA_ACCESS_KEY` / `IA_SECRET_KEY` and the engine works anywhere.
-2. **The background heartbeat** uses `launchd`. On Linux you'd use a systemd timer or cron; on
-   Windows, Task Scheduler — each just needs to run `internet-historian drain`
-   (equivalently `python -m historian drain`) on a timer.
+```bash
+# 1. Keys via environment variables instead of the macOS Keychain
+#    (free keys: https://archive.org/account/s3.php)
+export IA_ACCESS_KEY=<access> IA_SECRET_KEY=<secret>
 
-Porting means swapping those two. **Contributions very welcome** — that's the whole to-do list.
+# 2. Then everything works exactly as on macOS
+internet-historian discover "Chiikawa"
+internet-historian status
+
+# 3. A timer instead of launchd — e.g. cron (crontab -e), every 10 minutes.
+#    Use the full path from `which internet-historian`; cron's PATH is minimal.
+IA_ACCESS_KEY=<access>
+IA_SECRET_KEY=<secret>
+*/10 * * * * $HOME/.local/bin/internet-historian drain
+```
+
+Running `setup` on a non-Mac prints exactly this recipe instead of failing confusingly. Making
+it *native* is the whole to-do list, and each piece is a labeled starter issue:
+[systemd timer backend (#1)](https://github.com/ssskay/internet-historian/issues/1),
+[Windows Task Scheduler backend (#2)](https://github.com/ssskay/internet-historian/issues/2),
+[cross-platform key storage via `keyring` (#3)](https://github.com/ssskay/internet-historian/issues/3).
+**Contributions very welcome.**
 
 ## Configuration
 

@@ -280,15 +280,24 @@ def get_credentials():
     """
     ak, sk = read_credentials()
     if not ak or not sk:
-        sys.stderr.write(
-            "ERROR: Internet Archive S3 keys not found.\n"
-            "  Run `internet-historian setup` to walk through adding them,\n"
-            "  or store them in the macOS Keychain yourself (get them at\n"
-            "  https://archive.org/account/s3.php while logged in):\n"
-            f"    security add-generic-password -a {KEYCHAIN_ACCOUNT} -s ia-s3-access -w <ACCESS_KEY>\n"
-            f"    security add-generic-password -a {KEYCHAIN_ACCOUNT} -s ia-s3-secret -w <SECRET_KEY>\n"
-            "  Or set IA_ACCESS_KEY / IA_SECRET_KEY in the environment for testing.\n"
-        )
+        if sys.platform == "darwin":
+            sys.stderr.write(
+                "ERROR: Internet Archive S3 keys not found.\n"
+                "  Run `internet-historian setup` to walk through adding them,\n"
+                "  or store them in the macOS Keychain yourself (get them at\n"
+                "  https://archive.org/account/s3.php while logged in):\n"
+                f"    security add-generic-password -a {KEYCHAIN_ACCOUNT} -s ia-s3-access -w <ACCESS_KEY>\n"
+                f"    security add-generic-password -a {KEYCHAIN_ACCOUNT} -s ia-s3-secret -w <SECRET_KEY>\n"
+                "  Or set IA_ACCESS_KEY / IA_SECRET_KEY in the environment for testing.\n"
+            )
+        else:
+            sys.stderr.write(
+                "ERROR: Internet Archive S3 keys not found.\n"
+                "  Get free keys at https://archive.org/account/s3.php while logged\n"
+                "  in, then set them in the environment:\n"
+                "    export IA_ACCESS_KEY=<access> IA_SECRET_KEY=<secret>\n"
+                "  (Native key storage on this OS is tracked in issue #3.)\n"
+            )
         sys.exit(1)
     return ak, sk
 
@@ -1480,6 +1489,23 @@ def _cleanup_legacy_jobs(domain):
 
 def cmd_setup(args):
     print("Internet Historian — setup\n")
+    if sys.platform != "darwin":
+        # No Keychain and no launchd here — don't walk the user into a wall.
+        print("setup installs a macOS Keychain entry and a launchd job, and this")
+        print("isn't macOS — native support for this OS isn't built yet.")
+        print()
+        print("The engine itself runs fine here, though. The manual recipe:")
+        print()
+        print("  1. Get free keys at https://archive.org/account/s3.php, then:")
+        print("       export IA_ACCESS_KEY=<access> IA_SECRET_KEY=<secret>")
+        print("  2. Queue things exactly as on macOS:")
+        print("       internet-historian discover \"Chiikawa\"")
+        print("  3. Run `internet-historian drain` on any timer (cron, systemd)")
+        print("     every ~10 minutes.")
+        print()
+        print("Details and starter issues (systemd timer, Task Scheduler, keyring):")
+        print("  https://github.com/ssskay/internet-historian#windows--linux")
+        return 1
     # Step 1: make sure the Archive will accept captures.
     if not _onboard_credentials():
         return 1
