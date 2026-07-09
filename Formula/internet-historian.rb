@@ -12,8 +12,8 @@ class InternetHistorian < Formula
 
   desc "Quietly preserve the web things you love, forever — patient Internet-Archive queue"
   homepage "https://github.com/ssskay/internet-historian"
-  url "https://github.com/ssskay/internet-historian/releases/download/v0.2.0/internet_historian-0.2.0.tar.gz"
-  sha256 "50685797bf6199382ea0efd4ad358479654d5b648e156c6106fd31de13606ec3"
+  url "https://github.com/ssskay/internet-historian/releases/download/v0.3.0/internet_historian-0.3.0.tar.gz"
+  sha256 "ed0ac845ce29417eecad1bbe9f98ba64da5efd8b86403985a6a96db98a4e731d"
   license "MIT"
 
   depends_on "python@3.12"
