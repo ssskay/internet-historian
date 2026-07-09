@@ -7,6 +7,8 @@
 
 **Quietly preserve the web things you love, forever.**
 
+![Demo: discover "Chiikawa" finds the real pages and queues them all](docs/demo.gif)
+
 Internet Historian saves the web pages you care about into the free
 [Internet Archive](https://web.archive.org/) and keeps trying until each one is safely tucked
 away — then it re-checks nothing and bothers you about nothing. You point it at pages (or just
