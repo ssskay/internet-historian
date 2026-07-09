@@ -26,7 +26,7 @@ always prints exactly where it's reading from.
 ## Run the tests
 
 ```bash
-python3 -m pytest        # or: python3 -m unittest test_historian -v
+python3 -m pytest        # or: python3 -m unittest test_historian test_discover test_bookmarks -v
 ```
 
 CI runs the same suite on macOS and Linux across Python 3.10–3.12. Please keep it green, and
