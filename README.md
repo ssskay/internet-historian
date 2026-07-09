@@ -1,9 +1,8 @@
 # Internet Historian 🏛️
 
 [![tests](https://github.com/ssskay/internet-historian/actions/workflows/test.yml/badge.svg)](https://github.com/ssskay/internet-historian/actions/workflows/test.yml)
-<!-- TODO: once published to PyPI, add PyPI version + supported-Python-versions badges here:
-     [![PyPI](https://img.shields.io/pypi/v/internet-historian.svg)](https://pypi.org/project/internet-historian/)
-     [![Python versions](https://img.shields.io/pypi/pyversions/internet-historian.svg)](https://pypi.org/project/internet-historian/) -->
+[![PyPI](https://img.shields.io/pypi/v/internet-historian.svg)](https://pypi.org/project/internet-historian/)
+[![Python versions](https://img.shields.io/pypi/pyversions/internet-historian.svg)](https://pypi.org/project/internet-historian/)
 
 
 **Quietly preserve the web things you love, forever.**
@@ -71,8 +70,6 @@ internet-historian status
 ```
 
 ![Pretty status output](docs/pretty-status.png)
-
-<!-- TODO: drop a real screenshot at docs/pretty-status.png. Until then this is a placeholder. -->
 
 It's purely cosmetic and completely optional — without `rich` installed, everything prints as
 plain text exactly as before. No new required dependencies.
@@ -205,6 +202,8 @@ Porting means swapping those two. **Contributions very welcome** — that's the 
 Knobs live in [`config.toml`](config.toml) (no secrets there). Sensible defaults ship in the
 box: 10-minute drain interval, 2 capture slots left free for your own browsing, 30-day dedup
 window, and a conservative per-URL daily attempt cap. Tweak if you like; the defaults are fine.
+Personal or machine-local settings can go in a `config.local.toml` next to it (gitignored) —
+it's merged on top of `config.toml` at load time.
 
 **Periodic recapture (opt-in).** By default a page is archived once and then left alone. To keep
 a collection *fresh* — re-snapshotting pages that change over time, like a shop or a news hub —
