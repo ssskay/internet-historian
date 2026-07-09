@@ -23,4 +23,4 @@ jobs:
           # stdlib tomllib arrived in 3.11; older Pythons use the tomli fallback
           python -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)' || pip install tomli
       - name: Run unit tests
-        run: python -m unittest test_historian -v
+        run: python -m unittest test_historian test_discover test_bookmarks -v
