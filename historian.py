@@ -57,7 +57,7 @@ except ModuleNotFoundError:  # rich not installed — plain output only
 # ---------------------------------------------------------------------------
 
 APP_NAME = "internet-historian"
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 ROOT = Path(__file__).resolve().parent
 
 # Wikimedia API etiquette: identify the client with a descriptive User-Agent

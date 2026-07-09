@@ -3,7 +3,7 @@
 # SCAFFOLD: this is generated for a personal tap (e.g. ssskay/homebrew-tap), not
 # for homebrew-core. See docs/homebrew.md for how to publish and test it.
 #
-# The `url`/`sha256` below point at the v0.2.0 source distribution attached to
+# The `url`/`sha256` below point at the v0.3.0 source distribution attached to
 # the GitHub release. The `resource` blocks pin `requests` and its dependency
 # tree; regenerate them for future versions with:
 #     brew update-python-resources internet-historian
