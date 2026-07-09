@@ -248,11 +248,13 @@ class ConfigOverlayTests(unittest.TestCase):
     def test_local_overlay_merges_and_wins(self):
         historian.CONFIG_PATH.write_text(
             '[drain]\ninterval_seconds = 300\n'
-            '[collections]\nchiikawa = { refresh_days = 30 }\n'
+            '[collections]\nchiikawa = { refresh_days = 30 }\n',
+            encoding="utf-8",
         )
         historian.LOCAL_CONFIG_PATH.write_text(
             '[drain]\ninterval_seconds = 60\n'
-            '[collections]\npersonal = { refresh_days = 90 }\n'
+            '[collections]\npersonal = { refresh_days = 90 }\n',
+            encoding="utf-8",
         )
         cfg = historian.load_config()
         self.assertEqual(cfg["drain"]["interval_seconds"], 60)  # local wins
@@ -267,7 +269,8 @@ class ConfigOverlayTests(unittest.TestCase):
 
     def test_local_only_works_without_main_config(self):
         historian.LOCAL_CONFIG_PATH.write_text(
-            '[collections]\npersonal = { refresh_days = 90 }\n'
+            '[collections]\npersonal = { refresh_days = 90 }\n',
+            encoding="utf-8",
         )
         cfg = historian.load_config()
         self.assertEqual(cfg["collections"]["personal"], {"refresh_days": 90})

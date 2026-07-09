@@ -198,8 +198,8 @@ working for weeks without you. Other excellent tools in this space, and how they
 
 *Officially* supported: not yet. *Actually usable today*: yes. The **engine** (`historian.py`:
 the queue, the SQLite store, the Archive client) is pure Python and cross-platform — CI runs the
-full test suite on Linux — and state already lands in the right place (XDG dirs on Linux,
-`LOCALAPPDATA` on Windows). Only the two macOS conveniences are missing, and both have
+full test suite on Linux and Windows — and state already lands in the right place (XDG dirs on
+Linux, `LOCALAPPDATA` on Windows). Only the two macOS conveniences are missing, and both have
 one-line stand-ins:
 
 ```bash
@@ -218,7 +218,25 @@ IA_SECRET_KEY=<secret>
 */10 * * * * $HOME/.local/bin/internet-historian drain
 ```
 
-Running `setup` on a non-Mac prints exactly this recipe instead of failing confusingly. Making
+Same idea on **Windows** (PowerShell):
+
+```powershell
+# 1. Keys as user environment variables (restart the terminal so they take effect)
+setx IA_ACCESS_KEY <access>
+setx IA_SECRET_KEY <secret>
+
+# 2. Then everything works exactly as on macOS
+internet-historian discover "Chiikawa"
+
+# 3. Task Scheduler instead of launchd — every 10 minutes.
+#    Use the full path from `where.exe internet-historian`.
+schtasks /Create /SC MINUTE /MO 10 /TN "Internet Historian drain" /TR "C:\full\path\to\internet-historian.exe drain"
+```
+
+(Heads-up: a scheduled console task may briefly flash a window each run — making it invisible
+and native is exactly what issue #2 is for.)
+
+Running `setup` on a non-Mac prints this recipe instead of failing confusingly. Making
 it *native* is the whole to-do list, and each piece is a labeled starter issue:
 [systemd timer backend (#1)](https://github.com/ssskay/internet-historian/issues/1),
 [Windows Task Scheduler backend (#2)](https://github.com/ssskay/internet-historian/issues/2),
