@@ -107,6 +107,9 @@ def _resolve_state():
 
 STATE_DIR = _platform_state_dir()
 CONFIG_PATH, DATA_DIR, LOGS_DIR = _resolve_state()
+# Optional overlay next to the active config: personal collections and
+# machine-local tweaks live here (gitignored), not in the shared config.toml.
+LOCAL_CONFIG_PATH = CONFIG_PATH.with_name("config.local.toml")
 DB_PATH = DATA_DIR / "queue.db"
 LOG_PATH = LOGS_DIR / "historian.log"
 
@@ -320,8 +323,10 @@ DEFAULTS = {
 
 def load_config():
     cfg = {k: dict(v) for k, v in DEFAULTS.items()}
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, "rb") as f:
+    for path in (CONFIG_PATH, LOCAL_CONFIG_PATH):
+        if not path.exists():
+            continue
+        with open(path, "rb") as f:
             user = tomllib.load(f)
         for section, values in user.items():
             cfg.setdefault(section, {})

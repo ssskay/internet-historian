@@ -24,3 +24,6 @@ spacing_hours = 24                 # minimum gap between strikes that count towa
 # page is archived once and left alone, which is the default for everything.
 # IA's own 30-day dedup still guards against needless recaptures.
 chiikawa = { refresh_days = 30 }
+
+# Personal collections and machine-local tweaks belong in config.local.toml
+# (same folder, gitignored) — it's merged on top of this file at load time.

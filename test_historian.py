@@ -227,5 +227,49 @@ class HistorianTestCase(unittest.TestCase):
         self.assertEqual(self.row("https://other")["status"], "archived")
 
 
+class ConfigOverlayTests(unittest.TestCase):
+    """config.local.toml is merged on top of config.toml at load time."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        tmp = Path(self._tmp.name)
+        self._orig_config = historian.CONFIG_PATH
+        self._orig_local = historian.LOCAL_CONFIG_PATH
+        historian.CONFIG_PATH = tmp / "config.toml"
+        historian.LOCAL_CONFIG_PATH = tmp / "config.local.toml"
+
+    def tearDown(self):
+        historian.CONFIG_PATH = self._orig_config
+        historian.LOCAL_CONFIG_PATH = self._orig_local
+        self._tmp.cleanup()
+
+    def test_local_overlay_merges_and_wins(self):
+        historian.CONFIG_PATH.write_text(
+            '[drain]\ninterval_seconds = 300\n'
+            '[collections]\nchiikawa = { refresh_days = 30 }\n'
+        )
+        historian.LOCAL_CONFIG_PATH.write_text(
+            '[drain]\ninterval_seconds = 60\n'
+            '[collections]\npersonal = { refresh_days = 90 }\n'
+        )
+        cfg = historian.load_config()
+        self.assertEqual(cfg["drain"]["interval_seconds"], 60)  # local wins
+        self.assertEqual(cfg["collections"]["chiikawa"], {"refresh_days": 30})
+        self.assertEqual(cfg["collections"]["personal"], {"refresh_days": 90})
+        # untouched sections keep built-in defaults
+        self.assertEqual(cfg["death"]["confirmations"], 3)
+
+    def test_missing_files_fall_back_to_defaults(self):
+        cfg = historian.load_config()
+        self.assertEqual(cfg["drain"]["interval_seconds"], 600)
+
+    def test_local_only_works_without_main_config(self):
+        historian.LOCAL_CONFIG_PATH.write_text(
+            '[collections]\npersonal = { refresh_days = 90 }\n'
+        )
+        cfg = historian.load_config()
+        self.assertEqual(cfg["collections"]["personal"], {"refresh_days": 90})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

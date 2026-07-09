@@ -29,3 +29,4 @@ build/
 
 # Internal build notes (not part of the shipped tool)
 internet-historian-build-plan.md
+FABLE.md
