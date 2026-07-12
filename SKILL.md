@@ -1,6 +1,15 @@
 ---
 name: internet-historian
-description: Quietly preserve the web things you love, forever — via the Internet Archive. Use whenever the user wants to archive / save / back up / "keep a copy of" web content: specific URLs (a single link, a pasted list, a text file), everything linked from a page, OR everything about a subject or fandom they name ("archive Chiikawa stuff", "preserve the real pages about X", "be a Chiikawa internet historian") — in that last case the skill finds the real/official pages itself. Also use to check how the archive queue is doing, or find out why a page hasn't been preserved yet. Motivating case: saving Chiikawa (ちいかわ) pages before they disappear, but it works for any subject or URL.
+description: >-
+  Quietly preserve the web things you love, forever — via the Internet Archive.
+  Use whenever the user wants to archive / save / back up / "keep a copy of" web
+  content: specific URLs (a single link, a pasted list, a text file), everything
+  linked from a page, OR everything about a subject or fandom they name ("archive
+  Chiikawa stuff", "preserve the real pages about X", "be a Chiikawa internet
+  historian") — in that last case the skill finds the real/official pages itself.
+  Also use to check how the archive queue is doing, or find out why a page hasn't
+  been preserved yet. Motivating case: saving Chiikawa (ちいかわ) pages before they
+  disappear, but it works for any subject or URL.
 ---
 
 # Internet Historian
