@@ -89,6 +89,24 @@ Internet Historian also grows a **natural-language interface** if you use
 internet-historian install-skill
 ```
 
+### Install as a Claude skill
+
+Don't have the CLI on this machine, or want the skill in the Claude app? Grab the packaged
+skill instead:
+
+- **Drop-in `.skill` file** — download `internet-historian.skill` from the
+  [latest release](https://github.com/ssskay/internet-historian/releases/latest) and drop it
+  into Claude (it's a zip containing a single `internet-historian/` folder).
+- **Clone into your skills folder** — put the skill where Claude Code looks for it:
+
+  ```bash
+  git clone https://github.com/ssskay/internet-historian.git \
+      ~/.claude/skills/internet-historian
+  ```
+
+  (Only `SKILL.md` is needed there; the folder just has to contain it.) The skill still calls
+  the `internet-historian` CLI under the hood, so install that via `pipx` to actually archive.
+
 Then, in any Claude Code session, just say what you want — no commands to remember:
 
 > **You:** archive Chiikawa stuff

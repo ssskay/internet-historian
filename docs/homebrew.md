@@ -32,12 +32,18 @@ prefix for you.
 
    ```bash
    git tag v0.2.0
+   ./scripts/build_skill.sh            # produces internet-historian.skill (reproducible)
    gh release create v0.2.0 --generate-notes \
        dist/internet_historian-0.2.0.tar.gz \
-       dist/internet_historian-0.2.0-py3-none-any.whl
+       dist/internet_historian-0.2.0-py3-none-any.whl \
+       internet-historian.skill
    ```
 
    Attaching the sdist (`internet_historian-0.2.0.tar.gz`) is what the formula's `url` points at.
+   Attaching `internet-historian.skill` lets people install the Claude skill straight from
+   Releases (see the README's "Install as a Claude skill"). If the release already exists,
+   attach the skill on its own with
+   `./scripts/build_skill.sh && gh release upload v0.2.0 internet-historian.skill`.
 
 2. **Confirm the `url` + `sha256`** in `Formula/internet-historian.rb` match that sdist:
 
@@ -92,5 +98,6 @@ footprint is tiny: one module (`historian.py`) plus `requests`.
 ## Updating for future versions
 
 Bump `__version__` in `historian.py`, rebuild (`python -m build`), cut a new GitHub release with
-the new sdist attached, then repeat steps 2–4 above with the new version number, tarball hash,
-and refreshed resources.
+the new sdist **and** the freshly built `internet-historian.skill` attached (run
+`./scripts/build_skill.sh` — see step 1), then repeat steps 2–4 above with the new version
+number, tarball hash, and refreshed resources.
