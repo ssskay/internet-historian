@@ -21,14 +21,19 @@ minutes) and optimizes for **never losing a URL**, not for speed. Throttling fro
 Archive is normal weather, not failure — the tool simply waits and tries again.
 
 All logic lives in the `internet-historian` command (installed on the user's PATH via
-`pipx install internet-historian`; a shorter `historian` alias is installed too). This skill
+`pipx install internet-historian`, or `pip install internet-historian`, or — for a source
+checkout — `pip install -e .` from the repo; a shorter `historian` alias is installed too,
+and the repo can always be run directly as `python3 historian.py …`). This skill
 is a **thin** control surface: it knows which command to run and how to read the output. Do
 not reimplement queue, backoff, or SPN2 logic here — call the CLI.
 
 ## The commands
 
 Run the `internet-historian` command from anywhere (it's on the PATH). If it isn't found, the
-tool isn't installed — tell the user to run `pipx install internet-historian`.
+command isn't installed on PATH — install it with `pipx install internet-historian` **or**
+`pip install internet-historian`. If the user has a source checkout, either `pip install -e .`
+from the repo (gives them the `internet-historian`/`historian` commands) or just run
+`python3 historian.py <args>` from the repo directory. Don't assume pipx specifically.
 
 | Intent | Command |
 |--------|---------|
