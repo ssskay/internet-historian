@@ -4,6 +4,8 @@
 [![PyPI](https://img.shields.io/pypi/v/internet-historian.svg)](https://pypi.org/project/internet-historian/)
 [![Python versions](https://img.shields.io/pypi/pyversions/internet-historian.svg)](https://pypi.org/project/internet-historian/)
 
+<!-- sarakay.me/downloads -->
+**Install:** `pip install internet-historian` · [⬇ Claude skill](https://sarakay.me/get/internet-historian/claude-skill) · [all formats & checksums](https://sarakay.me/downloads.html#internet-historian)
 
 **Quietly preserve the web things you love, forever.**
 
